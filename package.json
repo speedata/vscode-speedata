@@ -1,0 +1,114 @@
+{
+  "name": "vscode-speedata",
+  "displayName": "Speedata Publisher",
+  "description": "XML language support for Speedata Publisher via RelaxNG schemas",
+  "version": "0.1.0",
+  "publisher": "speedatade",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/speedata/vscode-speedata"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onLanguage:xml"
+  ],
+  "main": "./dist/client/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "speedata.selectElement",
+        "title": "XML-Element auswählen (mit Kindelementen)"
+      },
+      {
+        "command": "speedata.toggleComment",
+        "title": "XML-Kommentar ein/aus (mit Escaping)"
+      },
+      {
+        "command": "speedata.goToParent",
+        "title": "XML: Zum Elternelement springen"
+      },
+      {
+        "command": "speedata.goToFirstChild",
+        "title": "XML: Zum ersten Kindelement springen"
+      },
+      {
+        "command": "speedata.goToNextSibling",
+        "title": "XML: Zum nächsten Geschwisterelement springen"
+      },
+      {
+        "command": "speedata.goToPrevSibling",
+        "title": "XML: Zum vorherigen Geschwisterelement springen"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "speedata.selectElement",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus && editorLangId == xml"
+      },
+      {
+        "command": "speedata.toggleComment",
+        "key": "ctrl+/",
+        "mac": "cmd+/",
+        "when": "editorTextFocus && editorLangId == xml"
+      },
+      {
+        "command": "speedata.goToParent",
+        "key": "ctrl+up",
+        "mac": "ctrl+up",
+        "when": "editorTextFocus && editorLangId == xml"
+      },
+      {
+        "command": "speedata.goToFirstChild",
+        "key": "ctrl+down",
+        "mac": "ctrl+down",
+        "when": "editorTextFocus && editorLangId == xml"
+      },
+      {
+        "command": "speedata.goToNextSibling",
+        "key": "ctrl+shift+down",
+        "mac": "ctrl+shift+down",
+        "when": "editorTextFocus && editorLangId == xml"
+      },
+      {
+        "command": "speedata.goToPrevSibling",
+        "key": "ctrl+shift+up",
+        "mac": "ctrl+shift+up",
+        "when": "editorTextFocus && editorLangId == xml"
+      }
+    ],
+    "configuration": {
+      "title": "Speedata Publisher",
+      "properties": {
+        "speedata.catalog": {
+          "type": "string",
+          "default": "",
+          "description": "Pfad zur XML-Katalog-Datei (OASIS-Format)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npx vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "sax": "^1.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/sax": "^1.2.7",
+    "@types/vscode": "^1.75.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}
