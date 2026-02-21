@@ -3,7 +3,7 @@
   "displayName": "Speedata Publisher",
   "description": "XML language support for Speedata Publisher via RelaxNG schemas",
   "version": "0.1.0",
-  "publisher": "speedatade",
+  "publisher": "speedata",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {

@@ -52,17 +52,22 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
   };
 });
 
-connection.onInitialized(() => {
+connection.onInitialized(async () => {
   connection.client.register(DidChangeConfigurationNotification.type);
+  // Load initial settings
+  await pullSettings();
 });
 
-connection.onDidChangeConfiguration((change) => {
-  const settings = (change.settings as { speedata?: SpeedataSettings })?.speedata;
-  if (settings) {
-    globalSettings = settings;
+async function pullSettings(): Promise<void> {
+  const config = await connection.workspace.getConfiguration('speedata');
+  if (config) {
+    globalSettings = { catalog: config.catalog || '' };
   }
-  // Re-validate all open documents
   documents.all().forEach(validateOpenDocument);
+}
+
+connection.onDidChangeConfiguration(async () => {
+  await pullSettings();
 });
 
 function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
