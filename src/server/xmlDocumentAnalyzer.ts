@@ -17,12 +17,21 @@ export interface CursorContext {
   attributeName?: string;     // current attribute name (for value completion or hover)
   attributePrefix?: string;   // partial attribute name being typed
   elementPrefix?: string;     // partial element name being typed
-  existingAttributes?: string[]; // attributes already present on current tag
+  existingAttributes?: Map<string, string>; // attributes already present on current tag (name → value)
 }
 
 export function analyzeDocument(doc: TextDocument, position: Position): CursorContext {
   const text = doc.getText();
   const offset = doc.offsetAt(position);
+
+  // Check if cursor is inside a comment or CDATA
+  if (isInsideCommentOrCDATA(text, offset)) {
+    return {
+      type: 'unknown',
+      elementStack: [],
+      currentElement: '',
+    };
+  }
 
   // Build element stack by scanning from start to offset
   const elementStack = buildElementStack(text, offset);
@@ -187,12 +196,32 @@ function buildElementStack(text: string, offset: number): string[] {
   return stack;
 }
 
-function extractAttributes(tagContent: string): string[] {
-  const attrs: string[] = [];
-  const attrRegex = /(\w[\w:.-]*)\s*=/g;
+function isInsideCommentOrCDATA(text: string, offset: number): boolean {
+  let i = 0;
+  while (i < offset) {
+    if (text.startsWith('<!--', i)) {
+      const end = text.indexOf('-->', i + 4);
+      if (end === -1 || end + 3 > offset) return true;
+      i = end + 3;
+      continue;
+    }
+    if (text.startsWith('<![CDATA[', i)) {
+      const end = text.indexOf(']]>', i + 9);
+      if (end === -1 || end + 3 > offset) return true;
+      i = end + 3;
+      continue;
+    }
+    i++;
+  }
+  return false;
+}
+
+function extractAttributes(tagContent: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const attrRegex = /(\w[\w:.-]*)\s*=\s*["']([^"']*)["']/g;
   let match: RegExpExecArray | null;
   while ((match = attrRegex.exec(tagContent)) !== null) {
-    attrs.push(match[1]);
+    attrs.set(match[1], match[2]);
   }
   return attrs;
 }

@@ -82,13 +82,29 @@
         "when": "editorTextFocus && editorLangId == xml"
       }
     ],
+    "configurationDefaults": {
+      "[xml]": {
+        "editor.defaultFormatter": "speedata.vscode-speedata"
+      }
+    },
     "configuration": {
       "title": "Speedata Publisher",
       "properties": {
         "speedata.catalog": {
           "type": "string",
           "default": "",
-          "description": "Pfad zur XML-Katalog-Datei (OASIS-Format)"
+          "description": "Path to XML catalog file (OASIS format)"
+        },
+        "speedata.schemaLanguage": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "de", "en"],
+          "enumDescriptions": [
+            "Use VS Code UI language",
+            "German schema (deutsche Dokumentation)",
+            "English schema (English documentation)"
+          ],
+          "description": "Language for the built-in schema documentation"
         }
       }
     }

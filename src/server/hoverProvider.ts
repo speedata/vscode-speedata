@@ -27,7 +27,7 @@ function getElementHover(elementName: string, model: ContentModel): Hover | null
   }
 
   if (decl.allowedChildren.length > 0) {
-    lines.push('', '**Erlaubte Kind-Elemente:** ' + decl.allowedChildren.map(c => `\`${c}\``).join(', '));
+    lines.push('', '**Allowed child elements:** ' + decl.allowedChildren.map(c => `\`${c}\``).join(', '));
   }
 
   return {
@@ -46,15 +46,15 @@ function getAttributeHover(elementName: string, attrName: string, model: Content
   if (!attr) return null;
 
   const lines: string[] = [];
-  lines.push(`**\`${attr.name}\`** (Attribut von \`<${elementName}>\`)`);
+  lines.push(`**\`${attr.name}\`** (attribute of \`<${elementName}>\`)`);
   if (attr.documentation) {
     lines.push('', attr.documentation);
   }
   if (attr.required) {
-    lines.push('', '*Pflichtattribut*');
+    lines.push('', '*Required*');
   }
   if (attr.values && attr.values.length > 0) {
-    lines.push('', '**Erlaubte Werte:**');
+    lines.push('', '**Allowed values:**');
     for (const v of attr.values) {
       if (v.documentation) {
         lines.push(`- \`${v.value}\` — ${v.documentation}`);

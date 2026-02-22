@@ -1,6 +1,7 @@
-import { CompletionItem, CompletionItemKind, InsertTextFormat } from 'vscode-languageserver/node';
+import { Command, CompletionItem, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
 import { CursorContext } from './xmlDocumentAnalyzer';
 import { ContentModel } from './contentModel';
+import { filterAttributes, getRequiredAttributes } from './customConstraints';
 
 export function getCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
   switch (context.type) {
@@ -25,7 +26,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
     ? parentDecl.allowedChildren
     : [...model.elements.keys()];
 
-  return candidates.map((childName, index) => {
+  const items: CompletionItem[] = candidates.map((childName, index) => {
     const childDecl = model.elements.get(childName);
     const item: CompletionItem = {
       label: childName,
@@ -34,13 +35,14 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
     };
 
     if (childDecl?.documentation) {
-      item.documentation = childDecl.documentation;
+      item.documentation = { kind: MarkupKind.Markdown, value: childDecl.documentation };
     }
 
     // Snippet: <Element attribute="value">$0</Element> or <Element />
     if (childDecl) {
+      const prefix = context.type === 'content' ? '<' : '';
       const requiredAttrs = childDecl.attributes.filter(a => a.required);
-      let snippet = childName;
+      let snippet = prefix + childName;
       let tabStop = 1;
       for (const attr of requiredAttrs) {
         snippet += ` ${attr.name}="\${${tabStop}:}"`;
@@ -57,39 +59,55 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
 
     return item;
   });
+
+  const prefix = context.type === 'content' ? '<' : '';
+  items.push({
+    label: '![CDATA[',
+    kind: CompletionItemKind.Class,
+    sortText: 'zzzz',
+    detail: 'CDATA section',
+    insertText: prefix + '![CDATA[$1]]>',
+    insertTextFormat: InsertTextFormat.Snippet,
+  });
+
+  return items;
 }
 
 function getAttributeCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
   const decl = model.elements.get(context.currentElement);
   if (!decl) return [];
 
-  const existing = new Set(context.existingAttributes || []);
+  const existingMap = context.existingAttributes ?? new Map<string, string>();
+  const existingNames = new Set(existingMap.keys());
 
-  return decl.attributes
-    .filter(attr => !existing.has(attr.name))
+  // Apply custom constraint filtering (e.g. DefineColor model-dependent attributes)
+  const filtered = filterAttributes(context.currentElement, existingMap, decl.attributes);
+  const customRequired = new Set(getRequiredAttributes(context.currentElement, existingMap));
+
+  return filtered
+    .filter(attr => !existingNames.has(attr.name))
     .map((attr, index) => {
+      const isRequired = attr.required || customRequired.has(attr.name);
       const item: CompletionItem = {
         label: attr.name,
         kind: CompletionItemKind.Property,
-        sortText: (attr.required ? '0' : '1') + String(index).padStart(4, '0'),
+        sortText: (isRequired ? '0' : '1') + String(index).padStart(4, '0'),
       };
 
       if (attr.documentation) {
-        item.documentation = attr.documentation;
+        item.documentation = { kind: MarkupKind.Markdown, value: attr.documentation };
       }
 
-      if (attr.required) {
+      if (isRequired) {
         item.detail = '(required)';
       }
 
       // Snippet with value placeholder
+      item.insertText = `${attr.name}="\$1"`;
+      item.insertTextFormat = InsertTextFormat.Snippet;
       if (attr.values && attr.values.length > 0) {
-        const choices = attr.values.map(v => v.value).join(',');
-        item.insertText = `${attr.name}="\${1|${choices}|}"`;
-        item.insertTextFormat = InsertTextFormat.Snippet;
-      } else {
-        item.insertText = `${attr.name}="\$1"`;
-        item.insertTextFormat = InsertTextFormat.Snippet;
+        // Trigger suggest after inserting so value completions with documentation appear
+        item.command = { title: 'Suggest', command: 'editor.action.triggerSuggest' };
       }
 
       return item;
@@ -112,7 +130,7 @@ function getAttributeValueCompletions(context: CursorContext, model: ContentMode
       sortText: String(index).padStart(4, '0'),
     };
     if (v.documentation) {
-      item.documentation = v.documentation;
+      item.labelDetails = { description: v.documentation };
     }
     return item;
   });

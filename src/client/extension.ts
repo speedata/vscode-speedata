@@ -15,12 +15,25 @@ export function activate(context: vscode.ExtensionContext): void {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'xml' }],
     synchronize: {},
+    initializationOptions: {
+      language: vscode.env.language,
+    },
   };
 
   client = new LanguageClient('speedata', 'Speedata Publisher', serverOptions, clientOptions);
   client.start();
 
   context.subscriptions.push(
+    vscode.languages.setLanguageConfiguration('xml', {
+      onEnterRules: [
+        {
+          // Between > and </: indent cursor line, outdent closing tag line
+          beforeText: />\s*$/,
+          afterText: /^\s*<\//,
+          action: { indentAction: vscode.IndentAction.IndentOutdent },
+        },
+      ],
+    }),
     vscode.workspace.onDidChangeTextDocument(onDocumentChange),
     vscode.commands.registerCommand('speedata.selectElement', selectElement),
     vscode.commands.registerCommand('speedata.toggleComment', toggleComment),
@@ -377,15 +390,90 @@ function jumpTo(editor: vscode.TextEditor, doc: vscode.TextDocument, offset: num
 
 let isInserting = false;
 
+function autoCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocumentChangeEvent['contentChanges'][0]): void {
+  const offset = doc.offsetAt(change.range.start) + 1;
+  if (offset < 2) return;
+
+  // Only trigger when / follows <
+  const twoChars = doc.getText(new vscode.Range(doc.positionAt(offset - 2), doc.positionAt(offset)));
+  if (twoChars !== '</') return;
+
+  // Don't insert if there's already a tag name after /
+  const charAfter = offset < doc.getText().length ? doc.getText().charAt(offset) : '';
+  if (/[a-zA-Z_]/.test(charAfter)) return;
+
+  // Build element stack from start to just before </, tracking opening tag offsets
+  const textBefore = doc.getText(new vscode.Range(new vscode.Position(0, 0), doc.positionAt(offset - 2)));
+  const stack: { name: string; offset: number }[] = [];
+  const tagRegex = /<\/?([a-zA-Z_][\w:.-]*)[^>]*?\/?>/g;
+  let m: RegExpExecArray | null;
+  while ((m = tagRegex.exec(textBefore)) !== null) {
+    if (m[0].startsWith('</')) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].name === m[1]) {
+          stack.splice(i);
+          break;
+        }
+      }
+    } else if (!m[0].endsWith('/>')) {
+      stack.push({ name: m[1], offset: m.index });
+    }
+  }
+
+  if (stack.length === 0) return;
+
+  const entry = stack[stack.length - 1];
+  const elementToClose = entry.name;
+  const pos = doc.positionAt(offset);
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document !== doc) return;
+
+  // Check if </ is at the start of the line (only whitespace before it)
+  const currentLine = doc.lineAt(pos.line);
+  const textBeforeOnLine = currentLine.text.substring(0, pos.character);
+  const isAtLineStart = /^\s*<\/$/.test(textBeforeOnLine);
+
+  isInserting = true;
+
+  if (isAtLineStart) {
+    // Adjust indentation to match the opening tag
+    const openLine = doc.lineAt(doc.positionAt(entry.offset).line);
+    const openIndent = openLine.text.match(/^(\s*)/)![1];
+    const currentIndent = currentLine.text.match(/^(\s*)/)![1];
+
+    editor.edit(editBuilder => {
+      editBuilder.insert(pos, elementToClose + '>');
+      if (currentIndent !== openIndent) {
+        editBuilder.replace(
+          new vscode.Range(new vscode.Position(pos.line, 0), new vscode.Position(pos.line, currentIndent.length)),
+          openIndent,
+        );
+      }
+    }, { undoStopBefore: false, undoStopAfter: false })
+    .then(() => { isInserting = false; }, () => { isInserting = false; });
+  } else {
+    editor.insertSnippet(
+      new vscode.SnippetString(`${elementToClose}>`),
+      pos,
+      { undoStopBefore: false, undoStopAfter: false }
+    ).then(() => { isInserting = false; }, () => { isInserting = false; });
+  }
+}
+
 function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
   if (isInserting) return;
   if (event.document.languageId !== 'xml') return;
   if (event.contentChanges.length === 0) return;
 
   const change = event.contentChanges[0];
-  if (!change.text.endsWith('>')) return;
-
   const doc = event.document;
+
+  if (change.text === '/') {
+    autoCloseOnSlash(doc, change);
+    return;
+  }
+
+  if (!change.text.endsWith('>')) return;
 
   // Compute position right after the inserted ">" from the change itself
   const offset = doc.offsetAt(change.range.start) + change.text.length;

@@ -14,6 +14,8 @@ import {
   LinkedEditingRangeParams,
   LinkedEditingRanges,
   Position,
+  DocumentSymbol,
+  SymbolKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ContentModel } from './contentModel';
@@ -23,6 +25,7 @@ import { analyzeDocument, CursorContext } from './xmlDocumentAnalyzer';
 import { getCompletions } from './completionProvider';
 import { getHover } from './hoverProvider';
 import { validateDocument } from './diagnosticsProvider';
+import { formatDocument } from './formattingProvider';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -31,9 +34,11 @@ const documents = new TextDocuments(TextDocument);
 
 interface SpeedataSettings {
   catalog: string;
+  schemaLanguage: 'auto' | 'de' | 'en';
 }
 
-let globalSettings: SpeedataSettings = { catalog: '' };
+let globalSettings: SpeedataSettings = { catalog: '', schemaLanguage: 'auto' };
+let clientLanguage = 'en';
 
 // Cache: schema URI → ContentModel
 const schemaCache = new Map<string, ContentModel>();
@@ -41,13 +46,19 @@ const schemaCache = new Map<string, ContentModel>();
 // Cache: catalog path → parsed catalog
 const catalogCache = new Map<string, Map<string, string>>();
 
-connection.onInitialize((_params: InitializeParams): InitializeResult => {
+connection.onInitialize((params: InitializeParams): InitializeResult => {
+  const initOptions = params.initializationOptions as { language?: string } | undefined;
+  if (initOptions?.language) {
+    clientLanguage = initOptions.language;
+  }
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Full,
       completionProvider: { triggerCharacters: ['<', ' ', '"', '='] },
       hoverProvider: true,
       linkedEditingRangeProvider: true,
+      documentFormattingProvider: true,
+      documentSymbolProvider: true,
     },
   };
 });
@@ -61,7 +72,15 @@ connection.onInitialized(async () => {
 async function pullSettings(): Promise<void> {
   const config = await connection.workspace.getConfiguration('speedata');
   if (config) {
-    globalSettings = { catalog: config.catalog || '' };
+    const prev = globalSettings;
+    globalSettings = {
+      catalog: config.catalog || '',
+      schemaLanguage: config.schemaLanguage || 'auto',
+    };
+    // Clear schema cache when language setting changes so the correct schema is loaded
+    if (prev.schemaLanguage !== globalSettings.schemaLanguage) {
+      schemaCache.clear();
+    }
   }
   documents.all().forEach(validateOpenDocument);
 }
@@ -97,6 +116,19 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
         }
       }
     }
+  }
+
+  // 3. Built-in schema by namespace
+  const nsMatch = text.match(/xmlns="([^"]+)"/);
+  if (nsMatch && nsMatch[1] === 'urn:speedata.de:2009/publisher/en') {
+    const lang = globalSettings.schemaLanguage === 'auto'
+      ? clientLanguage
+      : globalSettings.schemaLanguage;
+    const schemaFile = lang.startsWith('de')
+      ? 'layoutschema-de.rng'
+      : 'layoutschema-en.rng';
+    const schemaPath = path.resolve(__dirname, '..', '..', 'schemas', schemaFile);
+    return loadSchema(schemaPath);
   }
 
   return undefined;
@@ -178,11 +210,86 @@ connection.onHover((params: HoverParams): Hover | null => {
   return getHover(context, model);
 });
 
+connection.onDocumentFormatting((params) => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return [];
+  return formatDocument(doc, params.options);
+});
+
+connection.onDocumentSymbol((params): DocumentSymbol[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return [];
+  return getDocumentSymbols(doc);
+});
+
 connection.onRequest('textDocument/linkedEditingRange', (params: LinkedEditingRangeParams): LinkedEditingRanges | null => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return null;
   return getLinkedEditingRanges(doc, params.position);
 });
+
+function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
+  const text = doc.getText();
+  const symbols: DocumentSymbol[] = [];
+
+  // Match <Record ...> and <Function ...> opening tags (including self-closing)
+  const symbolTagRegex = /<(Record|Function)\b([^>]*?)(\/?)>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = symbolTagRegex.exec(text)) !== null) {
+    const tagName = match[1];
+    const attrsStr = match[2];
+    const selfClosing = match[3] === '/';
+    const tagStart = match.index;
+
+    // Extract symbol name from attributes
+    let symbolName: string | undefined;
+    if (tagName === 'Record') {
+      const elementMatch = attrsStr.match(/\belement\s*=\s*"([^"]*)"/);
+      if (!elementMatch) continue;
+      symbolName = elementMatch[1];
+      const modeMatch = attrsStr.match(/\bmode\s*=\s*"([^"]*)"/);
+      if (modeMatch) {
+        symbolName += ` (${modeMatch[1]})`;
+      }
+    } else {
+      // Function
+      const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
+      if (!nameMatch) continue;
+      symbolName = nameMatch[1];
+    }
+
+    const selectionStart = doc.positionAt(tagStart);
+    const selectionEnd = doc.positionAt(tagStart + match[0].length);
+
+    let rangeEnd: Position;
+    if (selfClosing) {
+      rangeEnd = selectionEnd;
+    } else {
+      // Find matching close tag
+      const closeRange = findMatchingCloseTag(text, tagStart, tagName, doc);
+      if (closeRange) {
+        // closeRange points to the tag name inside </...>, extend to include >
+        const closeTagEndOffset = text.indexOf('>', doc.offsetAt(closeRange.end));
+        rangeEnd = closeTagEndOffset !== -1
+          ? doc.positionAt(closeTagEndOffset + 1)
+          : closeRange.end;
+      } else {
+        rangeEnd = selectionEnd;
+      }
+    }
+
+    symbols.push(DocumentSymbol.create(
+      symbolName,
+      undefined,
+      tagName === 'Function' ? SymbolKind.Function : SymbolKind.Struct,
+      { start: selectionStart, end: rangeEnd },
+      { start: selectionStart, end: selectionEnd },
+    ));
+  }
+
+  return symbols;
+}
 
 function getLinkedEditingRanges(doc: TextDocument, position: Position): LinkedEditingRanges | null {
   const text = doc.getText();
@@ -248,7 +355,7 @@ function findMatchingCloseTag(text: string, openTagOffset: number, tagName: stri
   if (text[startSearch - 1] === '/') return null;
 
   let depth = 1;
-  const tagRegex = /<(\/?)(([a-zA-Z_][\w:.-]*))[^>]*?\/?>/g;
+  const tagRegex = /<(\/?)(([a-zA-Z_][\w:.-]*))(?:[^>"']|"[^"]*"|'[^']*')*>/g;
   tagRegex.lastIndex = startSearch + 1;
 
   let m: RegExpExecArray | null;
@@ -279,7 +386,7 @@ function findMatchingOpenTag(text: string, closeTagOffset: number, tagName: stri
   let depth = 1;
 
   // Collect all tags before closeTagOffset
-  const tagRegex = /<(\/?)(([a-zA-Z_][\w:.-]*))[^>]*?\/?>/g;
+  const tagRegex = /<(\/?)(([a-zA-Z_][\w:.-]*))(?:[^>"']|"[^"]*"|'[^']*')*>/g;
   const tags: { index: number; isClose: boolean; isSelfClose: boolean; name: string; nameLen: number }[] = [];
 
   let m: RegExpExecArray | null;
