@@ -390,6 +390,61 @@ function jumpTo(editor: vscode.TextEditor, doc: vscode.TextDocument, offset: num
 
 let isInserting = false;
 
+function autoSelfCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocumentChangeEvent['contentChanges'][0]): boolean {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document !== doc) return false;
+
+  // Position right after the inserted /
+  const offset = doc.offsetAt(change.range.start) + 1;
+  const text = doc.getText();
+
+  // The character right after / must be >
+  if (offset >= text.length || text[offset] !== '>') return false;
+
+  // Look backwards from the / to find the opening < of this tag
+  const textBefore = text.substring(0, offset - 1); // text before the /
+  const openBracket = textBefore.lastIndexOf('<');
+  if (openBracket === -1) return false;
+
+  // The tag must be an opening tag (not </ or <? or <!)
+  const afterOpen = text[openBracket + 1];
+  if (afterOpen === '/' || afterOpen === '?' || afterOpen === '!') return false;
+
+  // Extract the tag name
+  const tagNameMatch = text.substring(openBracket).match(/^<([a-zA-Z_][\w:.-]*)/);
+  if (!tagNameMatch) return false;
+  const tagName = tagNameMatch[1];
+
+  // There must not be another < between our opening bracket and the /
+  const between = text.substring(openBracket + 1, offset - 1);
+  if (between.includes('<')) return false;
+
+  // Find the closing tag </TagName> after the >
+  const afterClose = offset + 1; // position after >
+  const rest = text.substring(afterClose);
+
+  // The closing tag must follow, with only whitespace in between
+  const closeMatch = rest.match(new RegExp(`^(\\s*)</${tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`));
+  if (!closeMatch) return false;
+
+  // Delete the closing tag (including any whitespace before it)
+  const closeTagStart = afterClose;
+  const closeTagEnd = afterClose + closeMatch[0].length;
+
+  isInserting = true;
+  editor.edit(editBuilder => {
+    editBuilder.delete(new vscode.Range(doc.positionAt(closeTagStart), doc.positionAt(closeTagEnd)));
+  }, { undoStopBefore: false, undoStopAfter: false })
+  .then(() => {
+    // Place cursor after />
+    const newPos = doc.positionAt(offset + 1);
+    editor.selection = new vscode.Selection(newPos, newPos);
+    isInserting = false;
+  }, () => { isInserting = false; });
+
+  return true;
+}
+
 function autoCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocumentChangeEvent['contentChanges'][0]): void {
   const offset = doc.offsetAt(change.range.start) + 1;
   if (offset < 2) return;
@@ -469,7 +524,9 @@ function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
   const doc = event.document;
 
   if (change.text === '/') {
-    autoCloseOnSlash(doc, change);
+    if (!autoSelfCloseOnSlash(doc, change)) {
+      autoCloseOnSlash(doc, change);
+    }
     return;
   }
 
