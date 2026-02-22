@@ -28,16 +28,20 @@ VS Code extension providing XML language support powered by RelaxNG schemas. Bui
 
 ## Schema Association
 
-The extension resolves schemas in the following order — the first match wins:
+### 1. Built-in schema (zero configuration)
 
-### 1. Processing Instruction (highest precedence)
-```xml
-<?xml-model href="path/to/schema.rng" type="application/xml"
-            schematypens="http://relaxng.org/ns/structure/1.0"?>
-<Layout xmlns="urn:speedata.de:2009/publisher/en">
+Just open a speedata Publisher layout file — the extension automatically activates its built-in schema when it detects `xmlns="urn:speedata.de:2009/publisher/en"`. Completions, hover docs, and diagnostics work out of the box.
+
+The built-in schema is available in German and English. By default the language matches your VS Code UI language. To override this, use the `speedata.schemaLanguage` setting:
+
+```jsonc
+{ "speedata.schemaLanguage": "de" }  // "auto" (default), "de", or "en"
 ```
 
 ### 2. XML Catalog
+
+If you want to use a different schema, point the extension to an OASIS XML Catalog:
+
 ```jsonc
 { "speedata.catalog": "/path/to/catalog.xml" }
 ```
@@ -47,15 +51,17 @@ The extension resolves schemas in the following order — the first match wins:
 </catalog>
 ```
 
-### 3. Built-in schema (automatic)
+### 3. Processing Instruction (per file)
 
-If no schema is configured via processing instruction or catalog, the extension automatically activates its built-in speedata Publisher schema when it detects `xmlns="urn:speedata.de:2009/publisher/en"` in the document. No configuration needed — just open a Publisher layout file and completions, hover docs, and diagnostics will work out of the box.
+For per-file control, add a processing instruction at the top of the XML file:
 
-The built-in schema is available in German and English. By default the language matches your VS Code UI language. To override this, use the `speedata.schemaLanguage` setting:
-
-```jsonc
-{ "speedata.schemaLanguage": "de" }  // "auto" (default), "de", or "en"
+```xml
+<?xml-model href="path/to/schema.rng" type="application/xml"
+            schematypens="http://relaxng.org/ns/structure/1.0"?>
+<Layout xmlns="urn:speedata.de:2009/publisher/en">
 ```
+
+This takes the highest precedence and overrides both the built-in schema and the catalog.
 
 ## Development
 
