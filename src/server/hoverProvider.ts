@@ -2,9 +2,9 @@ import { Hover, MarkupKind } from 'vscode-languageserver/node';
 import { CursorContext } from './xmlDocumentAnalyzer';
 import { ContentModel } from './contentModel';
 
-export function getHover(context: CursorContext, model: ContentModel): Hover | null {
+export function getHover(context: CursorContext, model: ContentModel, lang?: string): Hover | null {
   if (context.type === 'elementHover' || context.type === 'content') {
-    return getElementHover(context.currentElement, model);
+    return getElementHover(context.currentElement, model, lang);
   }
 
   if (context.type === 'attributeHover' || context.type === 'attributeValue') {
@@ -16,7 +16,7 @@ export function getHover(context: CursorContext, model: ContentModel): Hover | n
   return null;
 }
 
-function getElementHover(elementName: string, model: ContentModel): Hover | null {
+function getElementHover(elementName: string, model: ContentModel, lang?: string): Hover | null {
   const decl = model.elements.get(elementName);
   if (!decl) return null;
 
@@ -28,6 +28,15 @@ function getElementHover(elementName: string, model: ContentModel): Hover | null
 
   if (decl.allowedChildren.length > 0) {
     lines.push('', '**Allowed child elements:** ' + decl.allowedChildren.map(c => `\`${c}\``).join(', '));
+  }
+
+  if (lang) {
+    const nameLower = decl.name.toLowerCase();
+    if (lang.startsWith('de')) {
+      lines.push('', `[Dokumentation](https://doc.speedata.de/publisher/de/befehlsreferenz/${nameLower}/)`);
+    } else {
+      lines.push('', `[Documentation](https://doc.speedata.de/publisher/en/commandreference/${nameLower}/)`);
+    }
   }
 
   return {

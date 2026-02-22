@@ -121,9 +121,7 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
   // 3. Built-in schema by namespace
   const nsMatch = text.match(/xmlns="([^"]+)"/);
   if (nsMatch && nsMatch[1] === 'urn:speedata.de:2009/publisher/en') {
-    const lang = globalSettings.schemaLanguage === 'auto'
-      ? clientLanguage
-      : globalSettings.schemaLanguage;
+    const lang = resolveLanguage();
     const schemaFile = lang.startsWith('de')
       ? 'layoutschema-de.rng'
       : 'layoutschema-en.rng';
@@ -132,6 +130,12 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
   }
 
   return undefined;
+}
+
+function resolveLanguage(): string {
+  return globalSettings.schemaLanguage === 'auto'
+    ? clientLanguage
+    : globalSettings.schemaLanguage;
 }
 
 function loadSchema(schemaPath: string): ContentModel | undefined {
@@ -207,7 +211,7 @@ connection.onHover((params: HoverParams): Hover | null => {
   const model = resolveSchemaForDocument(doc);
   if (!model) return null;
   const context = analyzeDocument(doc, params.position);
-  return getHover(context, model);
+  return getHover(context, model, resolveLanguage());
 });
 
 connection.onDocumentFormatting((params) => {
