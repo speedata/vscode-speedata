@@ -2,7 +2,7 @@
   "name": "vscode-speedata",
   "displayName": "Speedata Publisher",
   "description": "XML language support for Speedata Publisher via RelaxNG schemas",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "speedata",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -98,7 +98,11 @@
         "speedata.schemaLanguage": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "de", "en"],
+          "enum": [
+            "auto",
+            "de",
+            "en"
+          ],
           "enumDescriptions": [
             "Use VS Code UI language",
             "German schema (deutsche Dokumentation)",
