@@ -64,9 +64,18 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
   items.push({
     label: '![CDATA[',
     kind: CompletionItemKind.Class,
-    sortText: 'zzzz',
+    sortText: 'zzzz1',
     detail: 'CDATA section',
     insertText: prefix + '![CDATA[$1]]>',
+    insertTextFormat: InsertTextFormat.Snippet,
+  });
+
+  items.push({
+    label: '!-- -->',
+    kind: CompletionItemKind.Class,
+    sortText: 'zzzz2',
+    detail: 'Comment',
+    insertText: prefix + '!-- $1 -->',
     insertTextFormat: InsertTextFormat.Snippet,
   });
 

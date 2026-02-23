@@ -234,9 +234,54 @@ connection.onRequest('textDocument/linkedEditingRange', (params: LinkedEditingRa
 
 function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
   const text = doc.getText();
-  const symbols: DocumentSymbol[] = [];
+  const topLevel: DocumentSymbol[] = [];
 
-  // Match <Record ...> and <Function ...> opening tags (including self-closing)
+  // First pass: collect all Section symbols
+  const sectionRegex = /<Section\b([^>]*?)(\/?)>/g;
+  const sections: { symbol: DocumentSymbol; startOffset: number; endOffset: number }[] = [];
+  let sMatch: RegExpExecArray | null;
+
+  while ((sMatch = sectionRegex.exec(text)) !== null) {
+    const attrsStr = sMatch[1];
+    const selfClosing = sMatch[2] === '/';
+    const tagStart = sMatch.index;
+
+    const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
+    if (!nameMatch) continue;
+
+    const selectionStart = doc.positionAt(tagStart);
+    const selectionEnd = doc.positionAt(tagStart + sMatch[0].length);
+
+    let rangeEnd: Position;
+    let endOffset: number;
+    if (selfClosing) {
+      rangeEnd = selectionEnd;
+      endOffset = tagStart + sMatch[0].length;
+    } else {
+      const closeRange = findMatchingCloseTag(text, tagStart, 'Section', doc);
+      if (closeRange) {
+        const closeTagEndOffset = text.indexOf('>', doc.offsetAt(closeRange.end));
+        endOffset = closeTagEndOffset !== -1 ? closeTagEndOffset + 1 : doc.offsetAt(closeRange.end);
+        rangeEnd = doc.positionAt(endOffset);
+      } else {
+        rangeEnd = selectionEnd;
+        endOffset = tagStart + sMatch[0].length;
+      }
+    }
+
+    const sym = DocumentSymbol.create(
+      nameMatch[1],
+      undefined,
+      SymbolKind.Namespace,
+      { start: selectionStart, end: rangeEnd },
+      { start: selectionStart, end: selectionEnd },
+    );
+    sym.children = [];
+    sections.push({ symbol: sym, startOffset: tagStart, endOffset });
+    topLevel.push(sym);
+  }
+
+  // Second pass: collect Record and Function symbols, nest inside Sections if applicable
   const symbolTagRegex = /<(Record|Function)\b([^>]*?)(\/?)>/g;
   let match: RegExpExecArray | null;
 
@@ -246,7 +291,6 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
     const selfClosing = match[3] === '/';
     const tagStart = match.index;
 
-    // Extract symbol name from attributes
     let symbolName: string | undefined;
     if (tagName === 'Record') {
       const elementMatch = attrsStr.match(/\belement\s*=\s*"([^"]*)"/);
@@ -257,7 +301,6 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
         symbolName += ` (${modeMatch[1]})`;
       }
     } else {
-      // Function
       const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
       if (!nameMatch) continue;
       symbolName = nameMatch[1];
@@ -270,10 +313,8 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
     if (selfClosing) {
       rangeEnd = selectionEnd;
     } else {
-      // Find matching close tag
       const closeRange = findMatchingCloseTag(text, tagStart, tagName, doc);
       if (closeRange) {
-        // closeRange points to the tag name inside </...>, extend to include >
         const closeTagEndOffset = text.indexOf('>', doc.offsetAt(closeRange.end));
         rangeEnd = closeTagEndOffset !== -1
           ? doc.positionAt(closeTagEndOffset + 1)
@@ -283,16 +324,24 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
       }
     }
 
-    symbols.push(DocumentSymbol.create(
+    const sym = DocumentSymbol.create(
       symbolName,
       undefined,
       tagName === 'Function' ? SymbolKind.Function : SymbolKind.Struct,
       { start: selectionStart, end: rangeEnd },
       { start: selectionStart, end: selectionEnd },
-    ));
+    );
+
+    // Check if this symbol is inside a Section
+    const parentSection = sections.find(s => tagStart > s.startOffset && tagStart < s.endOffset);
+    if (parentSection) {
+      parentSection.symbol.children!.push(sym);
+    } else {
+      topLevel.push(sym);
+    }
   }
 
-  return symbols;
+  return topLevel;
 }
 
 function getLinkedEditingRanges(doc: TextDocument, position: Position): LinkedEditingRanges | null {
