@@ -202,7 +202,7 @@ connection.onCompletion((params: CompletionParams): CompletionItem[] => {
   const model = resolveSchemaForDocument(doc);
   if (!model) return [];
   const context = analyzeDocument(doc, params.position);
-  return getCompletions(context, model);
+  return getCompletions(context, model, doc.getText());
 });
 
 connection.onHover((params: HoverParams): Hover | null => {

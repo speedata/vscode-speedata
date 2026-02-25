@@ -2,8 +2,9 @@ import { Command, CompletionItem, CompletionItemKind, InsertTextFormat, MarkupKi
 import { CursorContext } from './xmlDocumentAnalyzer';
 import { ContentModel } from './contentModel';
 import { filterAttributes, getRequiredAttributes } from './customConstraints';
+import { getCrossReferenceCompletions, hasCrossReferenceTargets } from './crossReferenceProvider';
 
-export function getCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
+export function getCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
   switch (context.type) {
     case 'elementOpen':
     case 'content':
@@ -11,7 +12,7 @@ export function getCompletions(context: CursorContext, model: ContentModel): Com
     case 'attributeName':
       return getAttributeCompletions(context, model);
     case 'attributeValue':
-      return getAttributeValueCompletions(context, model);
+      return getAttributeValueCompletions(context, model, documentText);
     default:
       return [];
   }
@@ -64,7 +65,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
   items.push({
     label: '![CDATA[',
     kind: CompletionItemKind.Class,
-    sortText: 'zzzz1',
+    sortText: 'zzzz2',
     detail: 'CDATA section',
     insertText: prefix + '![CDATA[$1]]>',
     insertTextFormat: InsertTextFormat.Snippet,
@@ -73,7 +74,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
   items.push({
     label: '!-- -->',
     kind: CompletionItemKind.Class,
-    sortText: 'zzzz2',
+    sortText: 'zzzz1',
     detail: 'Comment',
     insertText: prefix + '!-- $1 -->',
     insertTextFormat: InsertTextFormat.Snippet,
@@ -114,7 +115,7 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
       // Snippet with value placeholder
       item.insertText = `${attr.name}="\$1"`;
       item.insertTextFormat = InsertTextFormat.Snippet;
-      if (attr.values && attr.values.length > 0) {
+      if ((attr.values && attr.values.length > 0) || hasCrossReferenceTargets(context.currentElement, attr.name)) {
         // Trigger suggest after inserting so value completions with documentation appear
         item.command = { title: 'Suggest', command: 'editor.action.triggerSuggest' };
       }
@@ -123,24 +124,39 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
     });
 }
 
-function getAttributeValueCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
+function getAttributeValueCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
   if (!context.attributeName) return [];
 
   const decl = model.elements.get(context.currentElement);
-  if (!decl) return [];
+  const attr = decl?.attributes.find(a => a.name === context.attributeName);
 
-  const attr = decl.attributes.find(a => a.name === context.attributeName);
-  if (!attr?.values) return [];
+  const items: CompletionItem[] = [];
+  const schemaValues = new Set<string>();
 
-  return attr.values.map((v, index) => {
-    const item: CompletionItem = {
-      label: v.value,
-      kind: CompletionItemKind.EnumMember,
-      sortText: String(index).padStart(4, '0'),
-    };
-    if (v.documentation) {
-      item.labelDetails = { description: v.documentation };
+  if (attr?.values) {
+    for (let index = 0; index < attr.values.length; index++) {
+      const v = attr.values[index];
+      schemaValues.add(v.value);
+      const item: CompletionItem = {
+        label: v.value,
+        kind: CompletionItemKind.EnumMember,
+        sortText: String(index).padStart(4, '0'),
+      };
+      if (v.documentation) {
+        item.labelDetails = { description: v.documentation };
+      }
+      items.push(item);
     }
-    return item;
-  });
+  }
+
+  if (documentText) {
+    const crossRefItems = getCrossReferenceCompletions(context.currentElement, context.attributeName, documentText);
+    for (const crItem of crossRefItems) {
+      if (!schemaValues.has(crItem.label as string)) {
+        items.push(crItem);
+      }
+    }
+  }
+
+  return items;
 }

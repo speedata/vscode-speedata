@@ -54,17 +54,26 @@ function formatXml(text: string, options: FormattingOptions): string {
     commentBuffer = [];
   }
 
+  let sawBlankLine = false;
+
   while (i < text.length) {
     // Skip whitespace between tokens (when not preserving)
     if (preserveDepth === 0) {
       if (isWhitespace(text[i])) {
-        i++;
+        // Track whether the skipped whitespace contains a blank line
+        let newlineCount = 0;
+        while (i < text.length && isWhitespace(text[i])) {
+          if (text[i] === '\n') newlineCount++;
+          i++;
+        }
+        if (newlineCount >= 2) sawBlankLine = true;
         continue;
       }
     }
 
     // Processing instruction: <?...?>
     if (text.startsWith('<?', i)) {
+      sawBlankLine = false;
       const end = text.indexOf('?>', i);
       if (end === -1) {
         out.push(text.substring(i));
@@ -101,22 +110,27 @@ function formatXml(text: string, options: FormattingOptions): string {
         if (hasBlankLineAfter(text, end + 3)) {
           // Standalone comment: emit immediately with blank line logic.
           flushBeforeElement(false);
+          if (sawBlankLine) out.push('\n');
           out.push(indentStr(indent, depth) + comment + '\n');
           pendingBlank = true;
           prevSiblingSelfClosing = false;
         } else {
           // Attached to next element: buffer it.
+          if (sawBlankLine) commentBuffer.push('\n');
           commentBuffer.push(indentStr(indent, depth) + comment + '\n');
         }
       } else {
+        if (sawBlankLine && out.length > 0) out.push('\n');
         out.push(indentStr(indent, depth) + comment + '\n');
       }
+      sawBlankLine = false;
       i = end + 3;
       continue;
     }
 
     // CDATA: <![CDATA[...]]>
     if (text.startsWith('<![CDATA[', i)) {
+      sawBlankLine = false;
       const end = text.indexOf(']]>', i);
       if (end === -1) {
         if (preserveDepth > 0) {
@@ -138,6 +152,7 @@ function formatXml(text: string, options: FormattingOptions): string {
 
     // Closing tag: </...>
     if (text.startsWith('</', i)) {
+      sawBlankLine = false;
       const end = text.indexOf('>', i);
       if (end === -1) {
         out.push(text.substring(i));
@@ -177,6 +192,7 @@ function formatXml(text: string, options: FormattingOptions): string {
     }
 
     // Opening or self-closing tag: <...> or <.../>
+    sawBlankLine = false;
     if (text[i] === '<' && i + 1 < text.length && isNameStartChar(text[i + 1])) {
       const end = findTagEnd(text, i);
       if (end === -1) {
@@ -209,12 +225,12 @@ function formatXml(text: string, options: FormattingOptions): string {
         const closeTag = '</' + tagName + '>';
         const preserved = capturePreservedContent(text, i, closeTag);
         if (preserved !== null) {
-          out.push(indentStr(indent, depth) + tag + preserved.content + closeTag + '\n');
+          out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + preserved.content + closeTag + '\n');
           pendingBlank = true;
           prevSiblingSelfClosing = false;
           i = preserved.endIndex;
         } else {
-          out.push(indentStr(indent, depth) + tag + '\n');
+          out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
           elementStack.push(tagName);
           depth++;
           pendingBlank = false;
@@ -223,7 +239,7 @@ function formatXml(text: string, options: FormattingOptions): string {
         continue;
       } else {
         flushBeforeElement(false);
-        out.push(indentStr(indent, depth) + tag + '\n');
+        out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
         elementStack.push(tagName);
         depth++;
         // Reset blank line state when entering a child scope
@@ -334,8 +350,44 @@ function isWhitespace(ch: string): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 }
 
+function normalizeTagSpaces(tag: string): string {
+  // Normalize whitespace between tag name, attributes, and closing bracket
+  // but preserve content inside quoted attribute values.
+  let result = '';
+  let inQuote: string | null = null;
+  let prevWasSpace = false;
+
+  for (let j = 0; j < tag.length; j++) {
+    const ch = tag[j];
+    if (inQuote) {
+      result += ch;
+      prevWasSpace = false;
+      if (ch === inQuote) inQuote = null;
+    } else if (ch === '"' || ch === "'") {
+      result += ch;
+      prevWasSpace = false;
+      inQuote = ch;
+    } else if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      if (!prevWasSpace) {
+        result += ' ';
+        prevWasSpace = true;
+      }
+    } else {
+      prevWasSpace = false;
+      result += ch;
+    }
+  }
+
+  // Ensure " />" for self-closing tags
+  result = result.replace(/\s*\/>$/, ' />');
+  // Ensure no space before ">" on normal closing tags (but not "/>")
+  result = result.replace(/\s+>$/, '>');
+
+  return result;
+}
+
 function normalizeSelfClosingTag(tag: string): string {
-  return tag.replace(/\s*\/>$/, ' />');
+  return normalizeTagSpaces(tag);
 }
 
 function isNameStartChar(ch: string): boolean {

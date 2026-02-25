@@ -124,7 +124,8 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
         }
 
         // Check attribute values against allowed values
-        if (attrDecl.values && attrDecl.values.length > 0 && attrInfo.value) {
+        // Skip validation for values containing {...} (XPath expressions)
+        if (attrDecl.values && attrDecl.values.length > 0 && attrInfo.value && !attrInfo.value.includes('{')) {
           const allowedVals = attrDecl.values.map(v => v.value);
           if (!allowedVals.includes(attrInfo.value)) {
             // Check if there's a pattern to match against

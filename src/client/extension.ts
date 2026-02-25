@@ -130,15 +130,14 @@ function toggleComment(): void {
   const doc = editor.document;
   const selection = editor.selection;
 
-  // Determine text range: use selection, or expand to full line if no selection
-  let range: vscode.Range;
+  // No selection: insert <!-- --> at cursor and place cursor inside
   if (selection.isEmpty) {
-    const line = doc.lineAt(selection.active.line);
-    range = line.range;
-  } else {
-    range = new vscode.Range(selection.start, selection.end);
+    const pos = selection.active;
+    editor.insertSnippet(new vscode.SnippetString('<!-- $1 -->'), pos);
+    return;
   }
 
+  const range = new vscode.Range(selection.start, selection.end);
   const text = doc.getText(range);
   const trimmed = text.trim();
 
