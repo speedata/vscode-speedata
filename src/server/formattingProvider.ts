@@ -225,9 +225,17 @@ function formatXml(text: string, options: FormattingOptions): string {
         const closeTag = '</' + tagName + '>';
         const preserved = capturePreservedContent(text, i, closeTag);
         if (preserved !== null) {
-          out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + preserved.content + closeTag + '\n');
-          pendingBlank = true;
-          prevSiblingSelfClosing = false;
+          const content = preserved.content;
+          if (content === '') {
+            // Empty preserved element → convert to self-closing tag
+            out.push(indentStr(indent, depth) + toSelfClosingTag(tag) + '\n');
+            pendingBlank = true;
+            prevSiblingSelfClosing = true;
+          } else {
+            out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + content + closeTag + '\n');
+            pendingBlank = true;
+            prevSiblingSelfClosing = false;
+          }
           i = preserved.endIndex;
         } else {
           out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
@@ -238,6 +246,16 @@ function formatXml(text: string, options: FormattingOptions): string {
         }
         continue;
       } else {
+        // Check if this is an empty element: <Foo></Foo> or <Foo>  </Foo>
+        const closeTag = '</' + tagName + '>';
+        if (isEmptyElement(text, end + 1, closeTag)) {
+          flushBeforeElement(true);
+          out.push(indentStr(indent, depth) + toSelfClosingTag(tag) + '\n');
+          pendingBlank = true;
+          prevSiblingSelfClosing = true;
+          i = text.indexOf('>', text.indexOf(closeTag, end + 1)) + 1;
+          continue;
+        }
         flushBeforeElement(false);
         out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
         elementStack.push(tagName);
@@ -388,6 +406,19 @@ function normalizeTagSpaces(tag: string): string {
 
 function normalizeSelfClosingTag(tag: string): string {
   return normalizeTagSpaces(tag);
+}
+
+/** Convert an opening tag like `<Foo attr="x">` to a self-closing tag `<Foo attr="x" />`. */
+function toSelfClosingTag(openTag: string): string {
+  const stripped = openTag.replace(/\s*>$/, '');
+  return normalizeTagSpaces(stripped + ' />');
+}
+
+/** Check whether only whitespace sits between the end of an opening tag and the given close tag. */
+function isEmptyElement(text: string, afterOpenTag: number, closeTag: string): boolean {
+  let j = afterOpenTag;
+  while (j < text.length && isWhitespace(text[j])) j++;
+  return text.startsWith(closeTag, j);
 }
 
 function isNameStartChar(ch: string): boolean {

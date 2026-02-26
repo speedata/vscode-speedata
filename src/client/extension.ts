@@ -514,6 +514,69 @@ function autoCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocumentC
   }
 }
 
+function autoExpandSelfClosingTag(doc: vscode.TextDocument, change: vscode.TextDocumentChangeEvent['contentChanges'][0]): void {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document !== doc) return;
+
+  // The deletion happened at change.range.start. After deletion, the character
+  // that was after '/' is now at change.range.start.
+  const deleteOffset = doc.offsetAt(change.range.start);
+  const text = doc.getText();
+
+  // The character at deleteOffset should now be '>' (previously after the '/')
+  if (deleteOffset >= text.length || text[deleteOffset] !== '>') return;
+
+  // Check for optional space before the deleted position: <Tag |>  (cursor where / was)
+  // Look backwards to find the opening '<'
+  const textBefore = text.substring(0, deleteOffset);
+  const openBracket = textBefore.lastIndexOf('<');
+  if (openBracket === -1) return;
+
+  // Must be an opening tag
+  const afterOpen = text[openBracket + 1];
+  if (afterOpen === '/' || afterOpen === '?' || afterOpen === '!') return;
+
+  // Extract tag name
+  const tagNameMatch = text.substring(openBracket).match(/^<([a-zA-Z_][\w:.-]*)/);
+  if (!tagNameMatch) return;
+  const tagName = tagNameMatch[1];
+
+  // No other '<' between our tag and the deletion point
+  const between = text.substring(openBracket + 1, deleteOffset);
+  if (between.includes('<')) return;
+
+  // Make sure this was indeed a self-closing tag that just lost its '/'.
+  // The text between the tag and '>' should end with optional whitespace only
+  // (the '/' was just deleted, so what remains is attributes + optional space + '>')
+  // We also verify it's NOT already an open tag with a matching close tag nearby.
+  const afterClose = deleteOffset + 1;
+  const rest = text.substring(afterClose);
+  const closeTagPattern = new RegExp(`^\\s*</${tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`);
+  if (closeTagPattern.test(rest)) return; // Already has a closing tag
+
+  // Remove trailing space before '>' and insert closing tag
+  // e.g. <Value > → <Value></Value>
+  const spaceBeforeClose = text[deleteOffset - 1] === ' ' ? 1 : 0;
+
+  isInserting = true;
+  editor.edit(editBuilder => {
+    if (spaceBeforeClose) {
+      editBuilder.delete(new vscode.Range(
+        doc.positionAt(deleteOffset - 1),
+        doc.positionAt(deleteOffset),
+      ));
+    }
+    editBuilder.insert(doc.positionAt(deleteOffset + 1), `</${tagName}>`);
+  }, { undoStopBefore: false, undoStopAfter: false })
+  .then(() => {
+    // Place cursor between > and </
+    const cursorOffset = deleteOffset + 1 - spaceBeforeClose;
+    const newPos = doc.positionAt(cursorOffset);
+    editor.selection = new vscode.Selection(newPos, newPos);
+    isInserting = false;
+  }, () => { isInserting = false; });
+}
+
 function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
   if (isInserting) return;
   if (event.document.languageId !== 'xml') return;
@@ -526,6 +589,12 @@ function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
     if (!autoSelfCloseOnSlash(doc, change)) {
       autoCloseOnSlash(doc, change);
     }
+    return;
+  }
+
+  // Detect deletion of '/' from a self-closing tag: <Tag /> becomes <Tag >
+  if (change.text === '' && change.rangeLength === 1) {
+    autoExpandSelfClosingTag(doc, change);
     return;
   }
 
@@ -549,6 +618,12 @@ function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
 
   // Check it's not a closing tag
   if (tagMatch[0].startsWith('</')) return;
+
+  // Check if '>' is inside an attribute value (odd number of quotes means we're in a string)
+  const tagContent = tagMatch[0];
+  const doubleQuotes = (tagContent.match(/"/g) || []).length;
+  const singleQuotes = (tagContent.match(/'/g) || []).length;
+  if (doubleQuotes % 2 !== 0 || singleQuotes % 2 !== 0) return;
 
   const tagName = tagMatch[1];
 

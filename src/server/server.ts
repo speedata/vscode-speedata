@@ -101,26 +101,24 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
     return loadSchema(schemaPath);
   }
 
+  // Extract namespace from root element only
+  const rootNs = getRootNamespace(text);
+
   // 2. Check catalog by namespace
-  if (globalSettings.catalog) {
-    const nsMatch = text.match(/xmlns="([^"]+)"/);
-    if (nsMatch) {
-      const ns = nsMatch[1];
-      const catalog = loadCatalog(globalSettings.catalog);
-      if (catalog) {
-        const schemaUri = catalog.get(ns);
-        if (schemaUri) {
-          const catalogDir = path.dirname(globalSettings.catalog);
-          const schemaPath = path.resolve(catalogDir, schemaUri);
-          return loadSchema(schemaPath);
-        }
+  if (globalSettings.catalog && rootNs) {
+    const catalog = loadCatalog(globalSettings.catalog);
+    if (catalog) {
+      const schemaUri = catalog.get(rootNs);
+      if (schemaUri) {
+        const catalogDir = path.dirname(globalSettings.catalog);
+        const schemaPath = path.resolve(catalogDir, schemaUri);
+        return loadSchema(schemaPath);
       }
     }
   }
 
   // 3. Built-in schema by namespace
-  const nsMatch = text.match(/xmlns="([^"]+)"/);
-  if (nsMatch && nsMatch[1] === 'urn:speedata.de:2009/publisher/en') {
+  if (rootNs === 'urn:speedata.de:2009/publisher/en') {
     const lang = resolveLanguage();
     const schemaFile = lang.startsWith('de')
       ? 'layoutschema-de.rng'
@@ -130,6 +128,16 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
   }
 
   return undefined;
+}
+
+/** Extract the default namespace (xmlns="...") from the root element only. */
+function getRootNamespace(text: string): string | undefined {
+  // Skip XML declaration, processing instructions, and comments before the root element
+  const rootTagMatch = text.match(/<(?!\?|!)[a-zA-Z][\s\S]*?>/);
+  if (!rootTagMatch) return undefined;
+  const rootTag = rootTagMatch[0];
+  const nsMatch = rootTag.match(/\bxmlns="([^"]+)"/);
+  return nsMatch ? nsMatch[1] : undefined;
 }
 
 function resolveLanguage(): string {
@@ -247,7 +255,7 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
     const tagStart = sMatch.index;
 
     const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
-    if (!nameMatch) continue;
+    if (!nameMatch || !nameMatch[1]) continue;
 
     const selectionStart = doc.positionAt(tagStart);
     const selectionEnd = doc.positionAt(tagStart + sMatch[0].length);
@@ -294,7 +302,7 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
     let symbolName: string | undefined;
     if (tagName === 'Record') {
       const elementMatch = attrsStr.match(/\belement\s*=\s*"([^"]*)"/);
-      if (!elementMatch) continue;
+      if (!elementMatch || !elementMatch[1]) continue;
       symbolName = elementMatch[1];
       const modeMatch = attrsStr.match(/\bmode\s*=\s*"([^"]*)"/);
       if (modeMatch) {
@@ -302,7 +310,7 @@ function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
       }
     } else {
       const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
-      if (!nameMatch) continue;
+      if (!nameMatch || !nameMatch[1]) continue;
       symbolName = nameMatch[1];
     }
 
