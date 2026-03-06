@@ -423,7 +423,8 @@ function autoSelfCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocum
   const rest = text.substring(afterClose);
 
   // The closing tag must follow, with only whitespace in between
-  const closeMatch = rest.match(new RegExp(`^(\\s*)</${tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`));
+  const escapedName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const closeMatch = rest.match(new RegExp(`^(\\s*)</${escapedName}>`));
   if (!closeMatch) return false;
 
   // Delete the closing tag (including any whitespace before it)
@@ -514,6 +515,23 @@ function autoCloseOnSlash(doc: vscode.TextDocument, change: vscode.TextDocumentC
   }
 }
 
+function hasMatchingCloseTag(rest: string, tagName: string): boolean {
+  const escaped = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`<(/?)(${escaped})(?:\\s[^>]*)?>`, 'g');
+  let depth = 0;
+  let m;
+  while ((m = regex.exec(rest)) !== null) {
+    if (m[0].endsWith('/>')) continue;
+    if (m[1] === '/') {
+      if (depth === 0) return true;
+      depth--;
+    } else {
+      depth++;
+    }
+  }
+  return false;
+}
+
 function autoExpandSelfClosingTag(doc: vscode.TextDocument, change: vscode.TextDocumentChangeEvent['contentChanges'][0]): void {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.document !== doc) return;
@@ -548,11 +566,12 @@ function autoExpandSelfClosingTag(doc: vscode.TextDocument, change: vscode.TextD
   // Make sure this was indeed a self-closing tag that just lost its '/'.
   // The text between the tag and '>' should end with optional whitespace only
   // (the '/' was just deleted, so what remains is attributes + optional space + '>')
-  // We also verify it's NOT already an open tag with a matching close tag nearby.
+  // Check if there's already a matching closing tag anywhere in the rest of the
+  // document (not just immediately after). This prevents false triggers when
+  // deleting a space in e.g. <foo > where </foo> exists further down.
   const afterClose = deleteOffset + 1;
   const rest = text.substring(afterClose);
-  const closeTagPattern = new RegExp(`^\\s*</${tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`);
-  if (closeTagPattern.test(rest)) return; // Already has a closing tag
+  if (hasMatchingCloseTag(rest, tagName)) return;
 
   // Remove trailing space before '>' and insert closing tag
   // e.g. <Value > → <Value></Value>
@@ -627,9 +646,9 @@ function onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
 
   const tagName = tagMatch[1];
 
-  // Check if there's already a closing tag right after
-  const restOfLine = doc.getText(new vscode.Range(pos, new vscode.Position(pos.line, pos.character + tagName.length + 3)));
-  if (restOfLine === `</${tagName}>`) return;
+  // Check if there's already a matching closing tag anywhere in the document
+  const restText = doc.getText().substring(offset);
+  if (hasMatchingCloseTag(restText, tagName)) return;
 
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.document !== doc) return;

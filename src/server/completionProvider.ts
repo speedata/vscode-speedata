@@ -9,6 +9,16 @@ export function getCompletions(context: CursorContext, model: ContentModel, docu
     case 'elementOpen':
     case 'content':
       return getElementCompletions(context, model);
+    case 'elementHover':
+      // Cursor is on a partially typed element name (e.g. <Op|).
+      // Use the parent element from the stack for allowed-children lookup.
+      return getElementCompletions({
+        ...context,
+        type: 'elementOpen',
+        currentElement: context.elementStack.length > 0
+          ? context.elementStack[context.elementStack.length - 1]
+          : '',
+      }, model);
     case 'attributeName':
       return getAttributeCompletions(context, model);
     case 'attributeValue':
@@ -52,7 +62,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
       if (childDecl.allowedChildren.length > 0 || childDecl.allowsText) {
         snippet += `>\${${tabStop}}</${childName}>`;
       } else {
-        snippet += ` />`;
+        snippet += ` \${${tabStop}} />`;
       }
       item.insertText = snippet;
       item.insertTextFormat = InsertTextFormat.Snippet;
