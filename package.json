@@ -2,7 +2,7 @@
   "name": "vscode-speedata",
   "displayName": "Speedata Publisher",
   "description": "XML language support for Speedata Publisher via RelaxNG schemas",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "speedata",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -86,7 +86,9 @@
       {
         "scopeName": "css.injection.stylesheet",
         "path": "./syntaxes/css-injection.json",
-        "injectTo": ["text.xml"],
+        "injectTo": [
+          "text.xml"
+        ],
         "embeddedLanguages": {
           "meta.embedded.block.css": "css"
         }
