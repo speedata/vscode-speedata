@@ -40,11 +40,11 @@ interface SpeedataSettings {
 let globalSettings: SpeedataSettings = { catalog: '', schemaLanguage: 'auto' };
 let clientLanguage = 'en';
 
-// Cache: schema URI → ContentModel
-const schemaCache = new Map<string, ContentModel>();
+// Cache: schema URI → ContentModel + mtime
+const schemaCache = new Map<string, { model: ContentModel; mtimeMs: number }>();
 
-// Cache: catalog path → parsed catalog
-const catalogCache = new Map<string, Map<string, string>>();
+// Cache: catalog path → parsed catalog + mtime
+const catalogCache = new Map<string, { catalog: Map<string, string>; mtimeMs: number }>();
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const initOptions = params.initializationOptions as { language?: string } | undefined;
@@ -127,6 +127,16 @@ function resolveSchemaForDocument(doc: TextDocument): ContentModel | undefined {
     return loadSchema(schemaPath);
   }
 
+  // 4. Built-in schema for XTS
+  if (rootNs === 'urn:speedata.de/2021/xts/en') {
+    const lang = resolveLanguage();
+    const schemaFile = lang.startsWith('de')
+      ? 'xts-layoutschema-de.rng'
+      : 'xts-layoutschema-en.rng';
+    const schemaPath = path.resolve(__dirname, '..', '..', 'schemas', schemaFile);
+    return loadSchema(schemaPath);
+  }
+
   return undefined;
 }
 
@@ -147,18 +157,19 @@ function resolveLanguage(): string {
 }
 
 function loadSchema(schemaPath: string): ContentModel | undefined {
-  const cached = schemaCache.get(schemaPath);
-  if (cached) {
-    return cached;
-  }
   try {
     if (!fs.existsSync(schemaPath)) {
       connection.console.warn(`Schema not found: ${schemaPath}`);
       return undefined;
     }
+    const mtimeMs = fs.statSync(schemaPath).mtimeMs;
+    const cached = schemaCache.get(schemaPath);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.model;
+    }
     const content = fs.readFileSync(schemaPath, 'utf-8');
     const model = parseRng(content);
-    schemaCache.set(schemaPath, model);
+    schemaCache.set(schemaPath, { model, mtimeMs });
     return model;
   } catch (e) {
     connection.console.error(`Error loading schema ${schemaPath}: ${e}`);
@@ -167,17 +178,18 @@ function loadSchema(schemaPath: string): ContentModel | undefined {
 }
 
 function loadCatalog(catalogPath: string): Map<string, string> | undefined {
-  const cached = catalogCache.get(catalogPath);
-  if (cached) {
-    return cached;
-  }
   try {
     if (!fs.existsSync(catalogPath)) {
       return undefined;
     }
+    const mtimeMs = fs.statSync(catalogPath).mtimeMs;
+    const cached = catalogCache.get(catalogPath);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.catalog;
+    }
     const content = fs.readFileSync(catalogPath, 'utf-8');
     const catalog = parseCatalog(content);
-    catalogCache.set(catalogPath, catalog);
+    catalogCache.set(catalogPath, { catalog, mtimeMs });
     return catalog;
   } catch (e) {
     connection.console.error(`Error loading catalog ${catalogPath}: ${e}`);

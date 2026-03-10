@@ -28,11 +28,17 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
   const stack: StackEntry[] = [];
   const PRESERVED_ELEMENTS = new Set(['Value']);
   let preserveDepth = 0;
+  let foreignDepth = 0;
 
   for (const tag of tags) {
     if (tag.name.startsWith('/')) {
       // Closing tag
       const closeName = tag.name.substring(1);
+
+      if (foreignDepth > 0) {
+        if (closeName.includes(':')) foreignDepth--;
+        continue;
+      }
 
       if (preserveDepth > 0) {
         if (PRESERVED_ELEMENTS.has(closeName)) {
@@ -66,11 +72,26 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
       continue;
     }
 
+    // Skip validation inside foreign-namespaced elements
+    if (foreignDepth > 0) {
+      if (!tag.selfClosing && tag.name.includes(':')) foreignDepth++;
+      continue;
+    }
+
     // Skip validation inside preserved elements
     if (preserveDepth > 0) {
       if (!tag.selfClosing && PRESERVED_ELEMENTS.has(tag.name)) {
         preserveDepth++;
       }
+      continue;
+    }
+
+    // Foreign-namespaced element: skip it and its children
+    if (tag.name.includes(':')) {
+      if (stack.length > 0) {
+        stack[stack.length - 1].hasChildren = true;
+      }
+      if (!tag.selfClosing) foreignDepth = 1;
       continue;
     }
 
@@ -312,6 +333,15 @@ function checkWellFormedness(text: string, doc: TextDocument, diagnostics: Diagn
 
 function parseTags(text: string, doc: TextDocument): TagInfo[] {
   const tags: TagInfo[] = [];
+
+  // Pre-compute comment and CDATA ranges to skip
+  const skipRanges: { start: number; end: number }[] = [];
+  const skipRegex = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>/g;
+  let skipMatch: RegExpExecArray | null;
+  while ((skipMatch = skipRegex.exec(text)) !== null) {
+    skipRanges.push({ start: skipMatch.index, end: skipMatch.index + skipMatch[0].length });
+  }
+
   // Match opening tags, closing tags, and self-closing tags
   // The middle group skips over quoted strings so that '>' inside attribute values is not treated as tag end
   const tagRegex = /<(\/?[a-zA-Z_][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
@@ -320,6 +350,9 @@ function parseTags(text: string, doc: TextDocument): TagInfo[] {
   while ((match = tagRegex.exec(text)) !== null) {
     // Skip processing instructions and comments
     if (text[match.index + 1] === '?' || text[match.index + 1] === '!') continue;
+
+    // Skip tags inside comments or CDATA sections
+    if (skipRanges.some(r => match!.index >= r.start && match!.index < r.end)) continue;
 
     const name = match[1];
     const attrsStr = match[2];

@@ -82,6 +82,16 @@
         "when": "editorTextFocus && editorLangId == xml"
       }
     ],
+    "grammars": [
+      {
+        "scopeName": "css.injection.stylesheet",
+        "path": "./syntaxes/css-injection.json",
+        "injectTo": ["text.xml"],
+        "embeddedLanguages": {
+          "meta.embedded.block.css": "css"
+        }
+      }
+    ],
     "configurationDefaults": {
       "[xml]": {
         "editor.defaultFormatter": "speedata.vscode-speedata"

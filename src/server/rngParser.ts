@@ -21,6 +21,8 @@ interface ParseState {
   currentValues: { value: string; documentation?: string }[];
   // Track if currently inside optional/zeroOrMore (attribute becomes not required)
   optionalDepth: number;
+  // Stack depth when <define> was opened, to detect direct-child <element>
+  defineStackDepth: number;
   // Text accumulation
   textBuffer: string;
   capturingText: string | null; // 'documentation' | 'value' | null
@@ -41,6 +43,7 @@ export function parseRng(content: string): ContentModel {
     currentAttribute: null,
     currentValues: [],
     optionalDepth: 0,
+    defineStackDepth: -1,
     textBuffer: '',
     capturingText: null,
   };
@@ -71,6 +74,7 @@ export function parseRng(content: string): ContentModel {
           childRefs: [],
           allowsText: false,
         };
+        state.defineStackDepth = state.stack.length;
         break;
 
       case 'start':
@@ -79,7 +83,19 @@ export function parseRng(content: string): ContentModel {
 
       case 'element':
         if (state.currentDefine && !state.currentDefine.elementName) {
-          state.currentDefine.elementName = attrs['name'] || '';
+          // Only treat as the define's main element if not nested inside
+          // <choice> or <zeroOrMore> (which indicate a content pattern, not a top-level element)
+          const patternContainers = new Set(['choice', 'zeroOrMore']);
+          let isPattern = false;
+          for (let i = state.defineStackDepth; i < state.stack.length; i++) {
+            if (patternContainers.has(state.stack[i].tag)) {
+              isPattern = true;
+              break;
+            }
+          }
+          if (!isPattern) {
+            state.currentDefine.elementName = attrs['name'] || '';
+          }
         }
         break;
 
