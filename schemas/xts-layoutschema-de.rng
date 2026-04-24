@@ -79,7 +79,7 @@
                             <ref name="e_Group"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -100,7 +100,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -139,7 +139,7 @@
                             <ref name="e_Group"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -160,7 +160,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -185,7 +185,7 @@
     </define>
     <define name="e_Attribute">
         <element name="Attribute">
-            <a:documentation>Erzeugt ein Attribut für die Element Datenstruktur, die mithilfe von SaveDataset auf Festplatte gespeichert werden kann.</a:documentation>
+            <a:documentation>Erzeugt ein Attribut für die Element Datenstruktur, die mithilfe von SaveXML auf Festplatte gespeichert werden kann.</a:documentation>
             <attribute name="name">
                 <a:documentation>Name des Attributs, das erzeugt wird.</a:documentation>
             </attribute>
@@ -224,91 +224,6 @@
     <define name="e_Br">
         <element name="Br">
             <a:documentation>Fügt einen Zeilenumbruch ein</a:documentation>
-            <empty></empty>
-        </element>
-    </define>
-    <define name="e_Barcode">
-        <element name="Barcode">
-            <a:documentation>Erzeugt einen 1D oder 2D Strichcode (barcode), der in PlaceObject ausgegeben werden kann.</a:documentation>
-            <optional>
-                <attribute name="color">
-                    <a:documentation>Farbe des Strichcodes. Muss vorher mit DefineColor definiert worden sein. Derzeit nur für QR-Codes.</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="eclevel">
-                    <a:documentation>Setzt den Fehlerkorrekturlevel für QR-Codes. Wenn nicht angegeben, nutzt das System den maximalen Level für die kleinste QR-Code Größe. Je höher der Level, desto mehr Fehlerkorrektur ist im QR-Code.</a:documentation>
-                    <choice>
-                        <value>L</value>
-                        <a:documentation>Setzt den kleinsten Fehlerkorrekturwert (1) mit ca. 7% Korrektur.</a:documentation>
-                        <value>M</value>
-                        <a:documentation>Setzt den zweitkleinsten Fehlerkorrekturwert (2) mit ca. 15% Korrektur.</a:documentation>
-                        <value>Q</value>
-                        <a:documentation>Setzt den zweitgrößten Fehlerkorrekturwert (3) mit ca. 25% Korrektur.</a:documentation>
-                        <value>H</value>
-                        <a:documentation>Setzt den größten Fehlerkorrekturwert (4) mit ca. 35% Korrektur.</a:documentation>
-                    </choice>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="fontfamily">
-                    <a:documentation>Name der Schriftart des Textes, der ggf. unterhalb des Strichcodes ausgegeben wird. Nicht in allen Codes verwendet.</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="fontsize">
-                    <a:documentation>Setze die Schriftgröße und den Zeilenabstand. Es kann eine Zeichenkette wie &#34;10pt/12pt&#34;, die die Schriftgröße und den Zeilenabstand bestimmt. Voreinstellung ist &#39;text&#39;.</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="height">
-                    <a:documentation>Höhe des Strichcodes.</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="keepfontsize">
-                    <a:documentation>Versuche die Schriftgröße beizubehalten (EAN13).</a:documentation>
-                    <choice>
-                        <value>yes</value>
-                        <value>no</value>
-                    </choice>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="overshoot">
-                    <a:documentation>Der Faktor, um den die äußeren und der innere Balken die normalen Balken übersteigt. Nur anwendbar bei EAN13.</a:documentation>
-                </attribute>
-            </optional>
-            <attribute name="select">
-                <a:documentation>Wert, der als Strichcode kodiert werden soll.</a:documentation>
-            </attribute>
-            <optional>
-                <attribute name="showtext">
-                    <a:documentation>Bestimmt, ob unterhalb des Barcodes der Text erscheint.</a:documentation>
-                    <choice>
-                        <value>yes</value>
-                        <a:documentation>Text unterhalb des Barcodes schreiben.</a:documentation>
-                        <value>no</value>
-                        <a:documentation>Keinen Text anzeigen.</a:documentation>
-                    </choice>
-                </attribute>
-            </optional>
-            <attribute name="type">
-                <a:documentation>Typ des Strichcodes. Kann EAN13, Code128 oder QRCode sein.</a:documentation>
-                <choice>
-                    <value>QRCode</value>
-                    <a:documentation>Erzeugt einen QR-Code, der für den Inhalt die kleinstmögliche Größe und den besten Fehlerkorrekturwert hat, sofern kein Fehlerkorrekturlevel angegeben ist.</a:documentation>
-                    <value>Code128</value>
-                    <a:documentation>Erzeugt einen Code 128 Barcode für Ziffern und Text (ohne Umlaute)</a:documentation>
-                    <value>EAN13</value>
-                    <a:documentation>Erzeugt einen EAN13 Barcode mit genau 13 Ziffern.</a:documentation>
-                </choice>
-            </attribute>
-            <optional>
-                <attribute name="width">
-                    <a:documentation>Breite des Strichcodes</a:documentation>
-                </attribute>
-            </optional>
             <empty></empty>
         </element>
     </define>
@@ -389,7 +304,7 @@
                             <ref name="e_HTML"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -416,7 +331,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -601,7 +516,7 @@
                             <ref name="e_Group"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -622,7 +537,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -771,7 +686,7 @@
     </define>
     <define name="e_Element">
         <element name="Element">
-            <a:documentation>Erzeugt eine Datenstruktur, die mithilfe von SaveDataset auf Festplatte gespeichert werden kann.</a:documentation>
+            <a:documentation>Erzeugt eine Datenstruktur, die mithilfe von SaveXML auf Festplatte gespeichert werden kann.</a:documentation>
             <interleave>
                 <group>
                     <attribute name="name">
@@ -825,7 +740,7 @@
                                 <ref name="e_HTML"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_LoadDataset"></ref>
+                                <ref name="e_LoadXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Loop"></ref>
@@ -852,7 +767,7 @@
                                 <ref name="e_ProcessNode"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_SaveDataset"></ref>
+                                <ref name="e_SaveXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_SetVariable"></ref>
@@ -912,7 +827,7 @@
                             <ref name="e_Group"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -933,7 +848,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -958,9 +873,7 @@
                     <attribute name="name">
                         <a:documentation>Der Name der anzulegenden Gruppe.</a:documentation>
                     </attribute>
-                    <interleave>
-                        <ref name="e_Contents"></ref>
-                    </interleave>
+                    <ref name="e_Contents"></ref>
                 </group>
                 <ref name="foreign-nodes"></ref>
             </interleave>
@@ -1076,8 +989,8 @@
             <empty></empty>
         </element>
     </define>
-    <define name="e_LoadDataset">
-        <element name="LoadDataset">
+    <define name="e_LoadXML">
+        <element name="LoadXML">
             <a:documentation>Lädt eine Datensatzdatei, die in einem vorherigen Durchlauf des Publishers erzeugt wurde (Attribut name), oder eine reguläre XML-Datei (Attribut href). Die »normale« Verarbeitung des Layoutregelwerks wird unterbrochen und mit dem Inhalt der Datensatzdatei fortgeführt. Nachdem die Verarbeitung der neu geladenen Datensatzdatei beendet ist, wird die Verarbeitung des Layoutregelwerks mit dem ursprünglichen Datensatz fortgesetzt. Eine ausführlichere Erläuterung findet sich im Abschnitt über automatisch generierte Verzeichnisse.</a:documentation>
             <optional>
                 <attribute name="name">
@@ -1161,7 +1074,7 @@
                                 <ref name="e_HTML"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_LoadDataset"></ref>
+                                <ref name="e_LoadXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Loop"></ref>
@@ -1188,7 +1101,7 @@
                                 <ref name="e_ProcessNode"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_SaveDataset"></ref>
+                                <ref name="e_SaveXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_SetVariable"></ref>
@@ -1592,7 +1505,7 @@
                             <ref name="e_HTML"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -1619,7 +1532,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -1801,7 +1714,7 @@
     </define>
     <define name="e_PlaceObject">
         <element name="PlaceObject">
-            <a:documentation>Gibt ein rechteckiges Objekt (Bild, Tabelle, Box, Barcode oder Textblock) aus.</a:documentation>
+            <a:documentation>Gibt ein rechteckiges Objekt (Bild, Tabelle, Box oder Textblock) aus.</a:documentation>
             <interleave>
                 <group>
                     <optional>
@@ -1906,9 +1819,6 @@
                     </optional>
                     <oneOrMore>
                         <interleave>
-                            <optional>
-                                <ref name="e_Barcode"></ref>
-                            </optional>
                             <optional>
                                 <ref name="e_Box"></ref>
                             </optional>
@@ -2026,7 +1936,7 @@
                             <ref name="e_Group"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_LoadDataset"></ref>
+                            <ref name="e_LoadXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Loop"></ref>
@@ -2047,7 +1957,7 @@
                             <ref name="e_ProcessNode"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_SaveDataset"></ref>
+                            <ref name="e_SaveXML"></ref>
                         </optional>
                         <optional>
                             <ref name="e_SetVariable"></ref>
@@ -2070,8 +1980,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_SaveDataset">
-        <element name="SaveDataset">
+    <define name="e_SaveXML">
+        <element name="SaveXML">
             <a:documentation>Speichert eine XML-Datei auf Festplatte. Diese Datei muss als Kindelement hierarchische Struktur, zum Beispiel aus den Befehlen Element und Attribut enthalten, wahlweise zusammengesetzt durch Variablen. Eine ausführlichere Erläuterung findet sich im Abschnitt über automatisch generierte Verzeichnisse.</a:documentation>
             <interleave>
                 <group>
@@ -2122,11 +2032,9 @@
             <a:documentation>Ein Gliederungselement zur Organisation des Layouts. Hat keinen Einfluss auf die Ausgabe.</a:documentation>
             <interleave>
                 <group>
-                    <optional>
-                        <attribute name="name">
-                            <a:documentation>Name dieses Abschnitts (nur zur Dokumentation).</a:documentation>
-                        </attribute>
-                    </optional>
+                    <attribute name="name">
+                        <a:documentation>Name dieses Abschnitts (nur zur Dokumentation).</a:documentation>
+                    </attribute>
                     <oneOrMore>
                         <optional>
                             <ref name="e_DefineColor"></ref>
@@ -2242,13 +2150,13 @@
                     <oneOrMore>
                         <interleave>
                             <optional>
+                                <ref name="e_CopyOf"></ref>
+                            </optional>
+                            <optional>
                                 <ref name="e_Element"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Paragraph"></ref>
-                            </optional>
-                            <optional>
-                                <ref name="e_Value"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Table"></ref>
@@ -2258,6 +2166,9 @@
                             </optional>
                             <optional>
                                 <ref name="e_Until"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Value"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_While"></ref>
@@ -2763,7 +2674,7 @@
                                 <ref name="e_HTML"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_LoadDataset"></ref>
+                                <ref name="e_LoadXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Loop"></ref>
@@ -2790,7 +2701,7 @@
                                 <ref name="e_ProcessNode"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_SaveDataset"></ref>
+                                <ref name="e_SaveXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_SetVariable"></ref>
@@ -2879,7 +2790,7 @@
                                 <ref name="e_HTML"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_LoadDataset"></ref>
+                                <ref name="e_LoadXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Loop"></ref>
@@ -2906,7 +2817,7 @@
                                 <ref name="e_ProcessNode"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_SaveDataset"></ref>
+                                <ref name="e_SaveXML"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_SetVariable"></ref>
@@ -2950,20 +2861,48 @@
 				    <ref name="html"/>
 			    </element>
 			    <element name="b"><ref name="html" /></element>
+			    <element name="barcode">
+				    <attribute name="type"/>
+				    <attribute name="value"/>
+				    <optional><attribute name="width"/></optional>
+				    <optional><attribute name="height"/></optional>
+				    <optional><attribute name="eclevel"/></optional>
+			    </element>
 			    <element name="br"><empty /></element>
 			    <element name="code"><ref name="html" /></element>
+			    <element name="div">
+				    <ref name="htmlclassidstyle"/>
+				    <ref name="html" />
+			    </element>
+			    <element name="em"><ref name="html" /></element>
+			    <element name="h1"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="h2"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="h3"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="h4"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="h5"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="h6"><ref name="htmlclassidstyle"/><ref name="html" /></element>
 			    <element name="i"><ref name="html" /></element>
+			    <element name="img">
+				    <attribute name="src"/>
+				    <optional><attribute name="width"/></optional>
+				    <optional><attribute name="height"/></optional>
+				    <optional><attribute name="alt"/></optional>
+				    <ref name="htmlclassidstyle"/>
+			    </element>
 			    <element name="kbd"><ref name="html" /></element>
-			    <element name="li"><ref name="html" /></element>
+			    <element name="li"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="ol"><ref name="htmlclassidstyle"/><ref name="html" /></element>
 			    <element name="p">
 					<ref name="htmlclassidstyle"/>
 				<ref name="html" /></element>
+			    <element name="pre"><ref name="htmlclassidstyle"/><ref name="html" /></element>
 			    <element name="span"><ref name="html" /><oneOrMore><attribute><anyName/></attribute></oneOrMore></element>
+			    <element name="strong"><ref name="html" /></element>
                 <element name="table"><ref name="htmltable" /></element>
 			    <element name="u"><ref name="html" /></element>
-			    <element name="ul"><ref name="html" /></element>
+			    <element name="ul"><ref name="htmlclassidstyle"/><ref name="html" /></element>
 			    <element>
-				    <nsName ns="urn:speedata.de/2021/xhtml"/>
+				    <nsName ns="http://www.w3.org/1999/xhtml"/>
 				    <zeroOrMore>
 					    <attribute><anyName/></attribute>
 				    </zeroOrMore>
@@ -2977,7 +2916,7 @@
 		<zeroOrMore>
 		    <choice>
 			    <element>
-				    <nsName ns="urn:speedata.de/2021/xhtml"/>
+				    <nsName ns="http://www.w3.org/1999/xhtml"/>
 				    <zeroOrMore>
 					    <attribute><anyName/></attribute>
 				    </zeroOrMore>
@@ -3084,7 +3023,7 @@
                   <nsName ns=""/>
                   <nsName ns="urn:speedata.de/2021/xts/en"/>
                   <nsName ns="urn:speedata.de/2021/xtsfunctions/en"/>
-                  <nsName ns="urn:speedata.de/2021/xhtml"/>
+                  <nsName ns="http://www.w3.org/1999/xhtml"/>
                </except>
             </anyName>
             <ref name="anything"/>
@@ -3099,7 +3038,7 @@
                   <nsName ns=""/>
                   <nsName ns="urn:speedata.de/2021/xts/en"/>
                   <nsName ns="urn:speedata.de/2021/xtsfunctions/en"/>
-                  <nsName ns="urn:speedata.de/2021/xhtml"/>
+                  <nsName ns="http://www.w3.org/1999/xhtml"/>
                </except>
             </anyName>
          </attribute>

@@ -130,10 +130,35 @@ function toggleComment(): void {
   const doc = editor.document;
   const selection = editor.selection;
 
-  // No selection: insert <!-- --> at cursor and place cursor inside
+  // No selection: toggle comment on the entire line content
   if (selection.isEmpty) {
-    const pos = selection.active;
-    editor.insertSnippet(new vscode.SnippetString('<!-- $1 -->'), pos);
+    const line = doc.lineAt(selection.active.line);
+    const lineText = line.text;
+    const indentMatch = lineText.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1] : '';
+    const content = lineText.substring(indent.length);
+
+    if (!content) return; // empty line, nothing to do
+
+    const lineRange = new vscode.Range(
+      new vscode.Position(line.lineNumber, indent.length),
+      new vscode.Position(line.lineNumber, lineText.length)
+    );
+
+    if (content.startsWith('<!--') && content.endsWith('-->')) {
+      // Uncomment: remove <!-- and -->, unescape nested
+      const inner = content.substring(4, content.length - 3);
+      const unescaped = inner.replace(/<!-\/-/g, '<!--').replace(/-\/->/g, '-->');
+      editor.edit(editBuilder => {
+        editBuilder.replace(lineRange, unescaped);
+      });
+    } else {
+      // Comment: escape nested comments, wrap
+      const escaped = content.replace(/<!--/g, '<!-/-').replace(/-->/g, '-/->');
+      editor.edit(editBuilder => {
+        editBuilder.replace(lineRange, `<!--${escaped}-->`);
+      });
+    }
     return;
   }
 

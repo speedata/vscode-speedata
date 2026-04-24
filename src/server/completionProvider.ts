@@ -104,7 +104,7 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
   const filtered = filterAttributes(context.currentElement, existingMap, decl.attributes);
   const customRequired = new Set(getRequiredAttributes(context.currentElement, existingMap));
 
-  return filtered
+  const items = filtered
     .filter(attr => !existingNames.has(attr.name))
     .map((attr, index) => {
       const isRequired = attr.required || customRequired.has(attr.name);
@@ -132,6 +132,28 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
 
       return item;
     });
+
+  // Offer well-known xmlns: namespace prefix completions
+  const nsCompletions: { prefix: string; uri: string; detail: string }[] = [
+    { prefix: 'xmlns:map', uri: 'http://www.w3.org/2005/xpath-functions/map', detail: 'XPath map namespace' },
+    { prefix: 'xmlns:array', uri: 'http://www.w3.org/2005/xpath-functions/array', detail: 'XPath array namespace' },
+    { prefix: 'xmlns:sd', uri: 'urn:speedata:2009/publisher/functions/en', detail: 'Speedata Publisher functions' },
+  ];
+
+  for (const ns of nsCompletions) {
+    if (!existingNames.has(ns.prefix)) {
+      items.push({
+        label: ns.prefix,
+        kind: CompletionItemKind.Property,
+        sortText: '2' + ns.prefix,
+        detail: ns.detail,
+        insertText: `${ns.prefix}="${ns.uri}"`,
+        insertTextFormat: InsertTextFormat.PlainText,
+      });
+    }
+  }
+
+  return items;
 }
 
 function getAttributeValueCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
