@@ -362,14 +362,16 @@ function parseTags(text: string, doc: TextDocument): TagInfo[] {
     const attributes = new Map<string, { value: string; line: number; character: number }>();
 
     if (!name.startsWith('/')) {
-      // Parse attributes
-      const attrRegex = /(\w[\w:.-]*)\s*=\s*["']([^"']*)["']/g;
+      // Parse attributes. The value alternation must distinguish quote kinds:
+      // a "…"-value may contain ', and a '…'-value may contain " — otherwise
+      // XPath snippets like  test="… $firma = 'GN' …"  get re-scanned as attrs.
+      const attrRegex = /(\w[\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
       let attrMatch: RegExpExecArray | null;
       while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
         const attrOffset = match.index + 1 + name.length + attrMatch.index;
         const attrPos = doc.positionAt(attrOffset);
         attributes.set(attrMatch[1], {
-          value: attrMatch[2],
+          value: attrMatch[2] ?? attrMatch[3],
           line: attrPos.line,
           character: attrPos.character,
         });

@@ -122,8 +122,10 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
     const posInAfterName = offset - (lastOpenBracket + 1 + elemNameMatch[0].length);
     const textBeforeCursor = afterName.substring(0, posInAfterName);
 
-    // Check if inside attribute value (after = and inside quotes)
-    const attrValueMatch = textBeforeCursor.match(/(\w[\w:.-]*)=["']([^"']*)$/);
+    // Check if inside attribute value (after = and inside quotes).
+    // The body must allow the *other* quote kind, otherwise a value like
+    // test="… 'foo' …" looks closed at the first inner '.
+    const attrValueMatch = textBeforeCursor.match(/(\w[\w:.-]*)=(?:"([^"]*)|'([^']*))$/);
     if (attrValueMatch) {
       return {
         type: 'attributeValue',
@@ -218,10 +220,10 @@ function isInsideCommentOrCDATA(text: string, offset: number): boolean {
 
 function extractAttributes(tagContent: string): Map<string, string> {
   const attrs = new Map<string, string>();
-  const attrRegex = /(\w[\w:.-]*)\s*=\s*["']([^"']*)["']/g;
+  const attrRegex = /(\w[\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;
   while ((match = attrRegex.exec(tagContent)) !== null) {
-    attrs.set(match[1], match[2]);
+    attrs.set(match[1], match[2] ?? match[3]);
   }
   return attrs;
 }
