@@ -23,6 +23,10 @@ function formatXml(text: string, options: FormattingOptions): string {
   let i = 0;
   let preserveDepth = 0;
   const elementStack: string[] = [];
+  // Number of currently-open <HTML> ancestors. Inside HTML (which also holds
+  // all MathML), text-only elements like <mi>lll</mi> are kept on a single
+  // line instead of being split across three lines.
+  let htmlDepth = 0;
 
   // Instead of emitting blank lines immediately, we track whether a blank
   // line is pending and what type the previous sibling was.
@@ -181,6 +185,7 @@ function formatXml(text: string, options: FormattingOptions): string {
 
       depth = Math.max(0, depth - 1);
       elementStack.pop();
+      if (tagName === 'HTML' && htmlDepth > 0) htmlDepth--;
       // Flush any buffered comments before the closing tag
       for (const c of commentBuffer) out.push(c);
       commentBuffer = [];
@@ -256,10 +261,24 @@ function formatXml(text: string, options: FormattingOptions): string {
           i = text.indexOf('>', text.indexOf(closeTag, end + 1)) + 1;
           continue;
         }
+        // Inside HTML/MathML, keep text-only elements (no child elements) on a
+        // single line: <mi>lll</mi> instead of splitting across three lines.
+        if (htmlDepth > 0) {
+          const inline = getInlineTextContent(text, end + 1, closeTag);
+          if (inline !== null) {
+            flushBeforeElement(false);
+            out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + inline.content + closeTag + '\n');
+            pendingBlank = true;
+            prevSiblingSelfClosing = false;
+            i = inline.endIndex;
+            continue;
+          }
+        }
         flushBeforeElement(false);
         out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
         elementStack.push(tagName);
         depth++;
+        if (tagName === 'HTML') htmlDepth++;
         // Reset blank line state when entering a child scope
         pendingBlank = false;
         prevSiblingSelfClosing = false;
@@ -281,9 +300,32 @@ function formatXml(text: string, options: FormattingOptions): string {
       i++;
     }
     const textContent = text.substring(textStart, i);
-    const trimmed = textContent.trim();
+    // Inside HTML, collapse internal whitespace runs (inline flow); elsewhere
+    // keep text as-is (apart from trimming) so e.g. CSS in <StyleSheet> stays intact.
+    const trimmed = htmlDepth > 0 ? textContent.replace(/\s+/g, ' ').trim() : textContent.trim();
     if (trimmed.length > 0) {
-      out.push(indentStr(indent, depth) + trimmed + '\n');
+      let glued = false;
+      // In HTML, text that follows a sibling element (e.g. the "." after
+      // </math>) is appended to that element's line instead of being pushed to
+      // its own line, which would introduce a stray space before punctuation.
+      if (htmlDepth > 0) {
+        const idx = lastNonBlankIndex(out);
+        if (idx >= 0 && endsWithElement(out[idx])) {
+          // In HTML any whitespace run (space, tab or newline) collapses to a
+          // single rendered space, so preserve presence faithfully: keep one
+          // space if the source had any whitespace here, none if it had none.
+          // (Leading whitespace is already consumed at the top of the loop, so
+          // inspect the character right before the text.)
+          const hadLeadingWs = textStart > 0 && isWhitespace(text[textStart - 1]);
+          const sep = hadLeadingWs ? ' ' : '';
+          out[idx] = out[idx].replace(/\s+$/, '') + sep + trimmed + '\n';
+          out.length = idx + 1;
+          glued = true;
+        }
+      }
+      if (!glued) {
+        out.push(indentStr(indent, depth) + trimmed + '\n');
+      }
     }
   }
 
@@ -334,6 +376,23 @@ function capturePreservedContent(text: string, startIndex: number, closeTag: str
     i++;
   }
   return null;
+}
+
+/** Index of the last emitted entry that is not whitespace-only, or -1. */
+function lastNonBlankIndex(out: string[]): number {
+  for (let k = out.length - 1; k >= 0; k--) {
+    if (out[k].trim() !== '') return k;
+  }
+  return -1;
+}
+
+/** Whether an emitted line ends with a closing (`</x>`) or self-closing (`<x/>`) tag. */
+function endsWithElement(entry: string): boolean {
+  const t = entry.replace(/\s+$/, '');
+  if (!t.endsWith('>')) return false;
+  if (t.endsWith('/>')) return true;
+  const lt = t.lastIndexOf('<');
+  return lt >= 0 && t[lt + 1] === '/';
 }
 
 function findTagEnd(text: string, start: number): number {
@@ -412,6 +471,33 @@ function normalizeSelfClosingTag(tag: string): string {
 function toSelfClosingTag(openTag: string): string {
   const stripped = openTag.replace(/\s*>$/, '');
   return normalizeTagSpaces(stripped + ' />');
+}
+
+/**
+ * If the element's content (between its opening tag and matching close tag)
+ * is text only — i.e. contains no child elements/comments/CDATA — return that
+ * text with internal whitespace runs collapsed to single spaces, plus the
+ * index just past the close tag. Returns null for mixed or element content.
+ */
+function getInlineTextContent(
+  text: string,
+  afterOpenTag: number,
+  closeTag: string,
+): { content: string; endIndex: number } | null {
+  let j = afterOpenTag;
+  while (j < text.length) {
+    if (text[j] === '<') {
+      if (text.startsWith(closeTag, j)) {
+        const raw = text.substring(afterOpenTag, j);
+        const content = raw.replace(/\s+/g, ' ').trim();
+        if (content.length === 0) return null; // empty → handled as self-closing
+        return { content, endIndex: j + closeTag.length };
+      }
+      return null; // a child element / comment / CDATA → not text-only
+    }
+    j++;
+  }
+  return null;
 }
 
 /** Check whether only whitespace sits between the end of an opening tag and the given close tag. */

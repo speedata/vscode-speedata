@@ -26,7 +26,10 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
     hasChildren: boolean;
   }
   const stack: StackEntry[] = [];
-  const PRESERVED_ELEMENTS = new Set(['Value']);
+  // Elements whose content is free-form per the schema (Value: plain text;
+  // HTML: a recursive html pattern that also permits arbitrary XHTML-namespace
+  // elements and an "anything" math subtree). Their children are not validated.
+  const PRESERVED_ELEMENTS = new Set(['Value', 'HTML']);
   let preserveDepth = 0;
   let foreignDepth = 0;
 

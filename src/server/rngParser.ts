@@ -1,36 +1,44 @@
 import * as sax from 'sax';
 import { ContentModel, ElementDeclaration, AttributeDeclaration } from './contentModel';
 
-interface DefineBlock {
-  name: string;
-  elementName: string;
+// A node in the RNG content tree. A define's container is represented as a node
+// with an empty elementName; each <element> (named or wildcard) is its own node.
+interface RngNode {
+  elementName: string;        // '' for define containers and wildcard elements
+  isWildcard: boolean;        // <element> with <anyName>/<nsName> instead of name=""
   documentation: string;
   attributes: AttributeDeclaration[];
-  childRefs: string[];
+  childRefs: string[];        // <ref name="…"> directly under this node
+  childElements: RngNode[];   // <element> directly nested under this node
   allowsText: boolean;
 }
 
 interface ParseState {
-  defines: Map<string, DefineBlock>;
+  defines: Map<string, RngNode>;   // define name → container node
   startRef: string;
   namespace: string;
-  // Parser state stack
-  stack: StackFrame[];
-  currentDefine: DefineBlock | null;
+  // Innermost open node is at the end (define container or element).
+  nodeStack: RngNode[];
+  inStart: boolean;
   currentAttribute: Partial<AttributeDeclaration> | null;
   currentValues: { value: string; documentation?: string }[];
   // Track if currently inside optional/zeroOrMore (attribute becomes not required)
   optionalDepth: number;
-  // Stack depth when <define> was opened, to detect direct-child <element>
-  defineStackDepth: number;
   // Text accumulation
   textBuffer: string;
-  capturingText: string | null; // 'documentation' | 'value' | null
+  capturingText: 'documentation' | 'value' | 'pattern' | null;
 }
 
-interface StackFrame {
-  tag: string;
-  attrs: Record<string, string>;
+function newNode(elementName: string, isWildcard: boolean): RngNode {
+  return {
+    elementName,
+    isWildcard,
+    documentation: '',
+    attributes: [],
+    childRefs: [],
+    childElements: [],
+    allowsText: false,
+  };
 }
 
 export function parseRng(content: string): ContentModel {
@@ -38,17 +46,19 @@ export function parseRng(content: string): ContentModel {
     defines: new Map(),
     startRef: '',
     namespace: '',
-    stack: [],
-    currentDefine: null,
+    nodeStack: [],
+    inStart: false,
     currentAttribute: null,
     currentValues: [],
     optionalDepth: 0,
-    defineStackDepth: -1,
     textBuffer: '',
     capturingText: null,
   };
 
   const parser = sax.parser(true, { trim: false });
+
+  const topNode = (): RngNode | null =>
+    state.nodeStack.length > 0 ? state.nodeStack[state.nodeStack.length - 1] : null;
 
   parser.onopentag = (node) => {
     const tag = localName(node.name);
@@ -56,7 +66,6 @@ export function parseRng(content: string): ContentModel {
     for (const [k, v] of Object.entries(node.attributes)) {
       attrs[k as string] = v as string;
     }
-    state.stack.push({ tag, attrs });
 
     switch (tag) {
       case 'grammar':
@@ -65,39 +74,30 @@ export function parseRng(content: string): ContentModel {
         }
         break;
 
-      case 'define':
-        state.currentDefine = {
-          name: attrs['name'] || '',
-          elementName: '',
-          documentation: '',
-          attributes: [],
-          childRefs: [],
-          allowsText: false,
-        };
-        state.defineStackDepth = state.stack.length;
+      case 'define': {
+        const container = newNode('', false);
+        state.defines.set(attrs['name'] || '', container);
+        state.nodeStack = [container];
         break;
+      }
 
       case 'start':
-        // Will capture ref inside
+        state.inStart = true;
         break;
 
-      case 'element':
-        if (state.currentDefine && !state.currentDefine.elementName) {
-          // Only treat as the define's main element if not nested inside
-          // <choice> or <zeroOrMore> (which indicate a content pattern, not a top-level element)
-          const patternContainers = new Set(['choice', 'zeroOrMore']);
-          let isPattern = false;
-          for (let i = state.defineStackDepth; i < state.stack.length; i++) {
-            if (patternContainers.has(state.stack[i].tag)) {
-              isPattern = true;
-              break;
-            }
-          }
-          if (!isPattern) {
-            state.currentDefine.elementName = attrs['name'] || '';
-          }
+      case 'element': {
+        // A named element, or a wildcard (<anyName>/<nsName>) element. Wildcard
+        // nodes are still pushed so their inner attributes/refs don't leak to
+        // the parent, but they contribute no completable name.
+        const name = attrs['name'] || '';
+        const node = newNode(name, !name);
+        const parent = topNode();
+        if (parent) {
+          parent.childElements.push(node);
         }
+        state.nodeStack.push(node);
         break;
+      }
 
       case 'attribute':
         state.currentAttribute = {
@@ -111,12 +111,10 @@ export function parseRng(content: string): ContentModel {
         break;
 
       case 'ref': {
-        if (state.currentDefine) {
-          state.currentDefine.childRefs.push(attrs['name'] || '');
-        }
-        // Check if we're inside <start>
-        const inStart = state.stack.some((f) => f.tag === 'start');
-        if (inStart && !state.currentDefine) {
+        const t = topNode();
+        if (t) {
+          t.childRefs.push(attrs['name'] || '');
+        } else if (state.inStart) {
           state.startRef = attrs['name'] || '';
         }
         break;
@@ -131,11 +129,11 @@ export function parseRng(content: string): ContentModel {
         // children are still required (at least once), don't change optionalDepth
         break;
 
-      case 'text':
-        if (state.currentDefine) {
-          state.currentDefine.allowsText = true;
-        }
+      case 'text': {
+        const t = topNode();
+        if (t) t.allowsText = true;
         break;
+      }
 
       case 'documentation':
         state.capturingText = 'documentation';
@@ -170,26 +168,35 @@ export function parseRng(content: string): ContentModel {
 
   parser.onclosetag = (name) => {
     const tag = localName(name);
-    state.stack.pop();
 
     switch (tag) {
       case 'define':
-        if (state.currentDefine) {
-          state.defines.set(state.currentDefine.name, state.currentDefine);
-          state.currentDefine = null;
+        state.nodeStack = [];
+        state.currentAttribute = null;
+        break;
+
+      case 'start':
+        state.inStart = false;
+        break;
+
+      case 'element':
+        if (state.nodeStack.length > 0) {
+          state.nodeStack.pop();
         }
         break;
 
-      case 'attribute':
-        if (state.currentAttribute && state.currentDefine) {
+      case 'attribute': {
+        const t = topNode();
+        if (state.currentAttribute && state.currentAttribute.name && t) {
           if (state.currentValues.length > 0) {
             state.currentAttribute.values = [...state.currentValues];
           }
-          state.currentDefine.attributes.push(state.currentAttribute as AttributeDeclaration);
-          state.currentAttribute = null;
-          state.currentValues = [];
+          t.attributes.push(state.currentAttribute as AttributeDeclaration);
         }
+        state.currentAttribute = null;
+        state.currentValues = [];
         break;
+      }
 
       case 'optional':
       case 'zeroOrMore':
@@ -214,9 +221,10 @@ export function parseRng(content: string): ContentModel {
           if (!state.currentAttribute.documentation) {
             state.currentAttribute.documentation = docText;
           }
-        } else if (state.currentDefine) {
-          if (!state.currentDefine.documentation) {
-            state.currentDefine.documentation = docText;
+        } else {
+          const t = topNode();
+          if (t && !t.documentation) {
+            t.documentation = docText;
           }
         }
         break;
@@ -243,44 +251,147 @@ export function parseRng(content: string): ContentModel {
     }
   };
 
-  parser.onerror = (err) => {
+  parser.onerror = () => {
     // Continue parsing on error
     parser.resume();
   };
 
   parser.write(content).close();
 
-  // Build ContentModel by resolving references
   return buildContentModel(state);
 }
 
 function buildContentModel(state: ParseState): ContentModel {
+  const defines = state.defines;
+
+  // The element names that reside inside the `html` content pattern (and its
+  // transitive table sub-patterns). These become the htmlElements map.
+  const htmlNodes = collectInlineElements('html', defines);
+  const htmlNames = new Set(htmlNodes.keys());
+
   const elements = new Map<string, ElementDeclaration>();
-
-  for (const [, define] of state.defines) {
-    if (!define.elementName) continue;
-
-    const allowedChildren: string[] = [];
-    for (const ref of define.childRefs) {
-      const target = state.defines.get(ref);
-      if (target && target.elementName) {
-        allowedChildren.push(target.elementName);
-      }
+  // Speedata elements: any named element declared at a define container's top
+  // level that is not part of the html pattern (e_A → A, e_HTML → HTML, …).
+  for (const container of defines.values()) {
+    for (const el of container.childElements) {
+      if (!el.elementName || htmlNames.has(el.elementName)) continue;
+      elements.set(el.elementName, declarationFor(el, defines));
     }
+  }
 
-    elements.set(define.elementName, {
-      name: define.elementName,
-      documentation: define.documentation,
-      attributes: define.attributes,
-      allowedChildren: [...new Set(allowedChildren)],
-      allowsText: define.allowsText,
-    });
+  const htmlElements = new Map<string, ElementDeclaration>();
+  for (const [name, node] of htmlNodes) {
+    htmlElements.set(name, declarationFor(node, defines));
   }
 
   return {
     elements,
+    htmlElements,
     namespace: state.namespace,
   };
+}
+
+// Collect, by name, every named <element> reachable from a define's content
+// pattern: its own nested elements plus those pulled in via <ref>.
+function collectInlineElements(
+  defineName: string,
+  defines: Map<string, RngNode>,
+): Map<string, RngNode> {
+  const result = new Map<string, RngNode>();
+  const visited = new Set<string>();
+
+  const walkNode = (node: RngNode) => {
+    for (const el of node.childElements) {
+      if (el.elementName && !result.has(el.elementName)) {
+        result.set(el.elementName, el);
+      }
+      walkNode(el);
+    }
+    for (const ref of node.childRefs) {
+      walkDefine(ref);
+    }
+  };
+  const walkDefine = (name: string) => {
+    if (visited.has(name)) return;
+    visited.add(name);
+    const node = defines.get(name);
+    if (node) walkNode(node);
+  };
+
+  walkDefine(defineName);
+  return result;
+}
+
+function declarationFor(el: RngNode, defines: Map<string, RngNode>): ElementDeclaration {
+  return {
+    name: el.elementName,
+    documentation: el.documentation,
+    attributes: resolveAttributes(el, defines, new Set()),
+    allowedChildren: [...directChildElements(el, defines, new Set())],
+    allowsText: resolveAllowsText(el, defines, new Set()),
+  };
+}
+
+// Names of elements that may appear as direct children of `node`: its own
+// nested <element>s plus elements contributed by referenced defines.
+function directChildElements(
+  node: RngNode,
+  defines: Map<string, RngNode>,
+  visited: Set<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const el of node.childElements) {
+    if (el.elementName) out.add(el.elementName);
+  }
+  for (const ref of node.childRefs) {
+    if (visited.has(ref)) continue;
+    visited.add(ref);
+    const d = defines.get(ref);
+    if (d) {
+      for (const n of directChildElements(d, defines, visited)) out.add(n);
+    }
+  }
+  return out;
+}
+
+// Attributes of an element: its own plus those from referenced pure
+// attribute-group defines (containers with attributes and no elements, e.g.
+// htmlclassidstyle). Element-producing refs are not followed.
+function resolveAttributes(
+  node: RngNode,
+  defines: Map<string, RngNode>,
+  visited: Set<string>,
+): AttributeDeclaration[] {
+  const byName = new Map<string, AttributeDeclaration>();
+  for (const attr of node.attributes) {
+    if (attr.name && !byName.has(attr.name)) byName.set(attr.name, attr);
+  }
+  for (const ref of node.childRefs) {
+    if (visited.has(ref)) continue;
+    visited.add(ref);
+    const d = defines.get(ref);
+    if (d && d.childElements.length === 0 && d.attributes.length > 0) {
+      for (const attr of resolveAttributes(d, defines, visited)) {
+        if (attr.name && !byName.has(attr.name)) byName.set(attr.name, attr);
+      }
+    }
+  }
+  return [...byName.values()];
+}
+
+function resolveAllowsText(
+  node: RngNode,
+  defines: Map<string, RngNode>,
+  visited: Set<string>,
+): boolean {
+  if (node.allowsText) return true;
+  for (const ref of node.childRefs) {
+    if (visited.has(ref)) continue;
+    visited.add(ref);
+    const d = defines.get(ref);
+    if (d && resolveAllowsText(d, defines, visited)) return true;
+  }
+  return false;
 }
 
 function localName(name: string): string {

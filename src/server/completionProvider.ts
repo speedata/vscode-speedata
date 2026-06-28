@@ -30,7 +30,10 @@ export function getCompletions(context: CursorContext, model: ContentModel, docu
 
 function getElementCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
   const parentElement = context.currentElement;
-  const parentDecl = model.elements.get(parentElement);
+  // Resolve declarations from both the speedata elements and the inline HTML
+  // elements, so completion works inside <HTML> and its descendants too.
+  const lookup = (name: string) => model.elements.get(name) ?? model.htmlElements.get(name);
+  const parentDecl = lookup(parentElement);
 
   // If we have a parent, offer its allowed children; otherwise offer all root elements
   const candidates = parentDecl
@@ -38,7 +41,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
     : [...model.elements.keys()];
 
   const items: CompletionItem[] = candidates.map((childName, index) => {
-    const childDecl = model.elements.get(childName);
+    const childDecl = lookup(childName);
     const item: CompletionItem = {
       label: childName,
       kind: CompletionItemKind.Class,
@@ -94,7 +97,7 @@ function getElementCompletions(context: CursorContext, model: ContentModel): Com
 }
 
 function getAttributeCompletions(context: CursorContext, model: ContentModel): CompletionItem[] {
-  const decl = model.elements.get(context.currentElement);
+  const decl = model.elements.get(context.currentElement) ?? model.htmlElements.get(context.currentElement);
   if (!decl) return [];
 
   const existingMap = context.existingAttributes ?? new Map<string, string>();
@@ -159,7 +162,7 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
 function getAttributeValueCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
   if (!context.attributeName) return [];
 
-  const decl = model.elements.get(context.currentElement);
+  const decl = model.elements.get(context.currentElement) ?? model.htmlElements.get(context.currentElement);
   const attr = decl?.attributes.find(a => a.name === context.attributeName);
 
   const items: CompletionItem[] = [];

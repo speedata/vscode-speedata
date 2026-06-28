@@ -21,6 +21,11 @@
                             <a:documentation>The target of the document link (a Mark). Example: article123</a:documentation>
                         </attribute>
                     </optional>
+                    <optional>
+                        <attribute name="page">
+                            <a:documentation>The target page number. Each page automatically gets a destination, so you can link to a specific page. Example: 2</a:documentation>
+                        </attribute>
+                    </optional>
                     <oneOrMore>
                         <interleave>
                             <zeroOrMore>
@@ -50,6 +55,30 @@
             </interleave>
         </element>
     </define>
+    <define name="e_AttachFile">
+        <element name="AttachFile">
+            <a:documentation>Attach a file to the PDF document. This is used for example to embed ZUGFeRD/Factur-X invoices.</a:documentation>
+            <attribute name="href">
+                <a:documentation>Path to the file to attach.</a:documentation>
+            </attribute>
+            <optional>
+                <attribute name="name">
+                    <a:documentation>Display name in PDF viewer. Defaults to the file name.</a:documentation>
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="description">
+                    <a:documentation>Description of the attachment.</a:documentation>
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="type">
+                    <a:documentation>The MIME type of the attachment (e.g. &#34;application/pdf&#34;). If set to &#34;ZUGFeRD invoice&#34; or &#34;facturx&#34;, the attached XML is treated as a Factur-X / ZUGFeRD invoice: the conformance profile is detected automatically from the XML data, the required XMP metadata for ZUGFeRD compliance is added, and the PDF format is automatically set to PDF/A-3b. If not set, the MIME type is detected from the file extension.</a:documentation>
+                </attribute>
+            </optional>
+            <empty></empty>
+        </element>
+    </define>
     <define name="e_Action">
         <element name="Action">
             <a:documentation>Associates an action with a text. Once the text is placed on the page, the associated action will be executed. The action can be compared to an invisible character. When the publisher outputs the character, the corresponding instructions will be run.</a:documentation>
@@ -65,10 +94,16 @@
     </define>
     <define name="e_AtPageCreation">
         <element name="AtPageCreation">
-            <a:documentation>The contents of the element AtPageCreation is executed the first time the page is accessed. This is used in DefineMasterpage.</a:documentation>
+            <a:documentation>The contents of the element AtPageCreation is executed the first time the page is accessed. This is used in DefineMasterPage.</a:documentation>
             <interleave>
                 <group>
                     <oneOrMore>
+                        <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
                         <optional>
                             <ref name="e_ClearPage"></ref>
                         </optional>
@@ -76,7 +111,7 @@
                             <ref name="e_ForAll"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Group"></ref>
+                            <ref name="e_Slate"></ref>
                         </optional>
                         <optional>
                             <ref name="e_LoadXML"></ref>
@@ -125,10 +160,16 @@
     </define>
     <define name="e_AtPageShipout">
         <element name="AtPageShipout">
-            <a:documentation>The enclosed instructions will be executed when the page is placed into the PDF file. Used in DefineMasterpage.</a:documentation>
+            <a:documentation>The enclosed instructions will be executed when the page is placed into the PDF file. Used in DefineMasterPage.</a:documentation>
             <interleave>
                 <group>
                     <oneOrMore>
+                        <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
                         <optional>
                             <ref name="e_ClearPage"></ref>
                         </optional>
@@ -136,7 +177,7 @@
                             <ref name="e_ForAll"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Group"></ref>
+                            <ref name="e_Slate"></ref>
                         </optional>
                         <optional>
                             <ref name="e_LoadXML"></ref>
@@ -292,6 +333,9 @@
                     </attribute>
                     <oneOrMore>
                         <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
+                        <optional>
                             <ref name="e_Column"></ref>
                         </optional>
                         <optional>
@@ -424,49 +468,8 @@
         <element name="Column">
             <a:documentation>Set the properties of a column in the table.</a:documentation>
             <optional>
-                <attribute name="align">
-                    <a:documentation>The horizontal alignment of the table cells in this column. Can be overridden in a cell (Td).</a:documentation>
-                    <choice>
-                        <value>left</value>
-                        <a:documentation>The table cells are left aligned.</a:documentation>
-                        <value>center</value>
-                        <a:documentation>The table cells are horizontally centered.</a:documentation>
-                        <value>right</value>
-                        <a:documentation>The table cells are right aligned.</a:documentation>
-                    </choice>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="backgroundcolor">
-                    <a:documentation>All cells in this column have this background color.</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="padding-left">
-                    <a:documentation>Set the left padding for the column</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="padding-right">
-                    <a:documentation>Set the right padding for the column</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
                 <attribute name="width">
                     <a:documentation>Width of the column. Argument can be a number (in grid cells) a length (e.g. 2cm) or a *-number (e.g. 4*).</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
-                <attribute name="valign">
-                    <a:documentation>The vertical alignment of the cells in this column. Can be overridden in a cell (Td).</a:documentation>
-                    <choice>
-                        <value>top</value>
-                        <a:documentation>The table cells are top aligned.</a:documentation>
-                        <value>middle</value>
-                        <a:documentation>The table cells are vertically centered.</a:documentation>
-                        <value>bottom</value>
-                        <a:documentation>The table cells are aligned at the bottom.</a:documentation>
-                    </choice>
                 </attribute>
             </optional>
             <empty></empty>
@@ -502,10 +505,16 @@
     </define>
     <define name="e_Contents">
         <element name="Contents">
-            <a:documentation>Marks the contents of a Group, a virtual area.</a:documentation>
+            <a:documentation>Marks the contents of a Slate, a virtual area.</a:documentation>
             <interleave>
                 <group>
                     <oneOrMore>
+                        <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
                         <optional>
                             <ref name="e_ClearPage"></ref>
                         </optional>
@@ -513,7 +522,7 @@
                             <ref name="e_ForAll"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Group"></ref>
+                            <ref name="e_Slate"></ref>
                         </optional>
                         <optional>
                             <ref name="e_LoadXML"></ref>
@@ -564,11 +573,6 @@
         <element name="DefineColor">
             <a:documentation>Colors defined with DefineColors can be referenced later by their name.</a:documentation>
             <optional>
-                <attribute name="alpha">
-                    <a:documentation>Set the opacity of the color. (0-100/255, where 0 is invisible)</a:documentation>
-                </attribute>
-            </optional>
-            <optional>
                 <attribute name="colorname">
                     <a:documentation>The name of the spot color if model is “spotcolor”. The name must match the required color name, such as “PANTONE 116 C”.</a:documentation>
                 </attribute>
@@ -593,17 +597,6 @@
             <attribute name="name">
                 <a:documentation>The name of the color to be defined.</a:documentation>
             </attribute>
-            <optional>
-                <attribute name="overprint">
-                    <a:documentation>Enable overprint for this color.</a:documentation>
-                    <choice>
-                        <value>yes</value>
-                        <a:documentation>Enable overprint for this color.</a:documentation>
-                        <value>no</value>
-                        <a:documentation>Disable overprint for this color (default).</a:documentation>
-                    </choice>
-                </attribute>
-            </optional>
             <optional>
                 <attribute name="value">
                     <a:documentation>Hex value of the color, such as #FA5 or #FFAA55 or rgb(255,170,85) or rgba(255,170,85,1).</a:documentation>
@@ -647,8 +640,8 @@
             <empty></empty>
         </element>
     </define>
-    <define name="e_DefineMasterpage">
-        <element name="DefineMasterpage">
+    <define name="e_DefineMasterPage">
+        <element name="DefineMasterPage">
             <a:documentation>Define a master page. A master page is chosen depending on the criterion given with the attribute “test”.</a:documentation>
             <interleave>
                 <group>
@@ -715,18 +708,11 @@
                     <attribute name="select">
                         <a:documentation>Selects the child elements from the data XML</a:documentation>
                     </attribute>
-                    <optional>
-                        <attribute name="limit">
-                            <a:documentation>Limits the number of children to the given number.</a:documentation>
-                        </attribute>
-                    </optional>
-                    <optional>
-                        <attribute name="start">
-                            <a:documentation>The first entry to process. Default is 1.</a:documentation>
-                        </attribute>
-                    </optional>
                     <oneOrMore>
                         <interleave>
+                            <optional>
+                                <ref name="e_CallTemplate"></ref>
+                            </optional>
                             <optional>
                                 <ref name="e_Column"></ref>
                             </optional>
@@ -824,7 +810,7 @@
                             <ref name="e_ForAll"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Group"></ref>
+                            <ref name="e_Slate"></ref>
                         </optional>
                         <optional>
                             <ref name="e_LoadXML"></ref>
@@ -865,13 +851,13 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Group">
-        <element name="Group">
-            <a:documentation>Create a virtual page that behaves like a real page but is not placed into the PDF.</a:documentation>
+    <define name="e_Slate">
+        <element name="Slate">
+            <a:documentation>Create a virtual page (a slate) that behaves like a real page but is not placed into the PDF. Think of it as a magic slate — you draw on it, inspect the result, and then place it on the page.</a:documentation>
             <interleave>
                 <group>
                     <attribute name="name">
-                        <a:documentation>Name of the group that is created.</a:documentation>
+                        <a:documentation>Name of the slate that is created.</a:documentation>
                     </attribute>
                     <ref name="e_Contents"></ref>
                 </group>
@@ -879,11 +865,11 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Groupcontents">
-        <element name="Groupcontents">
-            <a:documentation>Insert the contents of a previously created group.</a:documentation>
+    <define name="e_SlateContents">
+        <element name="SlateContents">
+            <a:documentation>Insert the contents of a previously created slate.</a:documentation>
             <attribute name="name">
-                <a:documentation>Name of the group whose contents should be inserted.</a:documentation>
+                <a:documentation>Name of the slate whose contents should be inserted.</a:documentation>
             </attribute>
             <empty></empty>
         </element>
@@ -919,7 +905,7 @@
             <a:documentation>Includes an external Graphic. Allowed graphic formats are PDF (.pdf), PNG (.png) and JPEG (.jpg). See below for a limitation on the number of included PDF files.</a:documentation>
             <optional>
                 <attribute name="href">
-                    <a:documentation>Filename of the image. Can be a file in the search path, an absolute file name, a file-URI for absolute paths (e.g. file:///path/to/image.pdf) or a location on the web (http, https).</a:documentation>
+                    <a:documentation>Filename of the image. Can be a file in the search path, an absolute file name, a file-URI for absolute paths (e.g. file:///path/to/image.pdf) or a location on the web (http, https). Use placeholder://WxH (e.g. placeholder://200x150) to generate a placeholder image with the given dimensions in PDF points.</a:documentation>
                 </attribute>
             </optional>
             <optional>
@@ -1062,6 +1048,9 @@
                     <oneOrMore>
                         <interleave>
                             <optional>
+                                <ref name="e_CallTemplate"></ref>
+                            </optional>
+                            <optional>
                                 <ref name="e_Column"></ref>
                             </optional>
                             <optional>
@@ -1156,22 +1145,6 @@
                             </choice>
                         </attribute>
                     </optional>
-                    <optional>
-                        <attribute name="errorcode">
-                            <a:documentation>If an error is raised, use this code on exit. Defaults to 1. Negative values are reserved for system purpose.</a:documentation>
-                        </attribute>
-                    </optional>
-                    <optional>
-                        <attribute name="exit">
-                            <a:documentation>Tells the software to exit immediately.</a:documentation>
-                            <choice>
-                                <value>no</value>
-                                <a:documentation>The speedata Publisher continues with the PDF creation.</a:documentation>
-                                <value>yes</value>
-                                <a:documentation>The speedata Publisher exits without finishing the PDF file.</a:documentation>
-                            </choice>
-                        </attribute>
-                    </optional>
                     <interleave>
                         <optional>
                             <oneOrMore>
@@ -1199,17 +1172,15 @@
                             <a:documentation>Minimum publisher version required. If major or minor version differ, give a warning. Format: 1.6.12 (revision number can be left out).</a:documentation>
                         </attribute>
                     </optional>
-                    <optional>
-                        <attribute name="name">
-                            <a:documentation>A name for the layout. Optional, without any influence on the layout itself.</a:documentation>
-                        </attribute>
-                    </optional>
                     <oneOrMore>
+                        <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
                         <optional>
                             <ref name="e_DefineColor"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_DefineMasterpage"></ref>
+                            <ref name="e_DefineMasterPage"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Function"></ref>
@@ -1224,7 +1195,7 @@
                             <ref name="e_PDFOptions"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Pageformat"></ref>
+                            <ref name="e_PageFormat"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Record"></ref>
@@ -1239,7 +1210,10 @@
                             <ref name="e_SetVariable"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Stylesheet"></ref>
+                            <ref name="e_StyleSheet"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_Template"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Trace"></ref>
@@ -1377,8 +1351,32 @@
                 </attribute>
             </optional>
             <optional>
+                <attribute name="imagenotfound">
+                    <a:documentation>Controls behavior when an image file is not found. With &#34;warning&#34; (default), a placeholder image is inserted and processing continues. With &#34;error&#34;, a missing image stops the layout run.</a:documentation>
+                    <choice>
+                        <value>warning</value>
+                        <a:documentation>Insert a placeholder image and continue (default).</a:documentation>
+                        <value>error</value>
+                        <a:documentation>Report an error and stop processing.</a:documentation>
+                    </choice>
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="missingglyph">
+                    <a:documentation>Controls behavior when a character is not found in the font. With &#34;warning&#34; (default), a warning is logged and the character is skipped. With &#34;error&#34;, the layout run is stopped. With &#34;none&#34;, missing glyphs are silently ignored.</a:documentation>
+                    <choice>
+                        <value>warning</value>
+                        <a:documentation>Log a warning and skip the character (default).</a:documentation>
+                        <value>error</value>
+                        <a:documentation>Report an error and stop processing.</a:documentation>
+                        <value>none</value>
+                        <a:documentation>Silently ignore missing glyphs.</a:documentation>
+                    </choice>
+                </attribute>
+            </optional>
+            <optional>
                 <attribute name="mainlanguage">
-                    <a:documentation>The default language for text (hyphenation and rendering). You can also set the default language on the command line and locally set it at Paragraph and Textblock.</a:documentation>
+                    <a:documentation>The default language for text (hyphenation and rendering). You can also set the default language on the command line and locally set it at Paragraph and TextBlock.</a:documentation>
                     <choice>
                         <data type="string">
                             <param name="pattern">\{.+\}</param>
@@ -1493,6 +1491,9 @@
                 <group>
                     <oneOrMore>
                         <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
+                        <optional>
                             <ref name="e_Column"></ref>
                         </optional>
                         <optional>
@@ -1561,8 +1562,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Pageformat">
-        <element name="Pageformat">
+    <define name="e_PageFormat">
+        <element name="PageFormat">
             <a:documentation>The size of the PDF pages. Defaults to 210mm width and 297mm height (A4).</a:documentation>
             <attribute name="height">
                 <a:documentation>The height of the PDF pages.</a:documentation>
@@ -1616,10 +1617,15 @@
     </define>
     <define name="e_Param">
         <element name="Param">
-            <a:documentation>Specify a parameter for a function definition.</a:documentation>
+            <a:documentation>Specify a parameter for a Function or Template definition, or pass an argument in a CallTemplate.</a:documentation>
             <optional>
                 <attribute name="name">
                     <a:documentation>The name of the parameter.</a:documentation>
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="select">
+                    <a:documentation>The value of the parameter. On a CallTemplate it is the argument passed to the template; on a Template definition it is the default value used when the caller omits the parameter.</a:documentation>
                 </attribute>
             </optional>
             <empty></empty>
@@ -1653,6 +1659,14 @@
                         <value>thumbnails</value>
                         <a:documentation>Display the thumbnail pane.</a:documentation>
                     </choice>
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="format">
+                    <a:documentation>Set the PDF output format. Accepts a single conformance class or a comma-separated combination, e.g. &#34;PDF/A-3b, PDF/UA-1&#34; for an accessible archival PDF. Recognised tokens: PDF, PDF/A-3b (supports file attachments, required for ZUGFeRD), PDF/X-3, PDF/X-4 (for printing), PDF/UA (alias for PDF/UA-1), PDF/UA-2 (both for accessibility).</a:documentation>
+                    <data type="string">
+                        <param name="pattern">\s*(PDF|PDF/A-3b|PDF/X-3|PDF/X-4|PDF/UA|PDF/UA-1|PDF/UA-2)(\s*,\s*(PDF|PDF/A-3b|PDF/X-3|PDF/X-4|PDF/UA|PDF/UA-1|PDF/UA-2))*\s*</param>
+                    </data>
                 </attribute>
             </optional>
             <optional>
@@ -1762,8 +1776,8 @@
                         </attribute>
                     </optional>
                     <optional>
-                        <attribute name="groupname">
-                            <a:documentation>The name of the group that gets output. When given a groupname, PlaceObject should not contain any objects.</a:documentation>
+                        <attribute name="slate">
+                            <a:documentation>The name of the slate that gets output. When given, PlaceObject should not contain any objects.</a:documentation>
                         </attribute>
                     </optional>
                     <optional>
@@ -1835,7 +1849,7 @@
                                 <ref name="e_Table"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_Textblock"></ref>
+                                <ref name="e_TextBlock"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Value"></ref>
@@ -1855,11 +1869,6 @@
                     <attribute name="name">
                         <a:documentation>Name of the area.</a:documentation>
                     </attribute>
-                    <optional>
-                        <attribute name="framecolor">
-                            <a:documentation>Set the color of the frame in grid=yes mode. Defaults to &#39;red&#39;</a:documentation>
-                        </attribute>
-                    </optional>
                     <oneOrMore>
                         <interleave>
                             <optional>
@@ -1896,11 +1905,6 @@
     <define name="e_ProcessNode">
         <element name="ProcessNode">
             <a:documentation>Executes all given nodes. The elements, that are to be executed, are given with the attribute selection.</a:documentation>
-            <optional>
-                <attribute name="limit">
-                    <a:documentation>Limits the number of items processed with this command</a:documentation>
-                </attribute>
-            </optional>
             <attribute name="select">
                 <a:documentation>Selection of child elements, that are to be processed.</a:documentation>
             </attribute>
@@ -1914,18 +1918,24 @@
     </define>
     <define name="e_Record">
         <element name="Record">
-            <a:documentation>Contains the instructions when the publisher processes the element in the data file with the given name. The record matching the root element will be called by the software automatically, all further data handling must be done by the user.</a:documentation>
+            <a:documentation>Contains the instructions to be executed when a data element matches the given match expression. The Record matching the root element will be called automatically, all further data handling must be done by the user via ProcessNode. Match expressions support XPath predicates for conditional matching (similar to XSLT template matching).</a:documentation>
             <interleave>
                 <group>
-                    <attribute name="element">
-                        <a:documentation>The name of the element the record matches.</a:documentation>
+                    <attribute name="match">
+                        <a:documentation>An XPath match expression. This can be a simple element name (e.g. data) or an element name followed by an XPath predicate in brackets (e.g. item[@type=&#39;invoice&#39;] or item[not(@hidden=&#39;true&#39;)]). When multiple Records match the same element, Records with predicates take priority over those without. Among Records with predicates, the last defined one wins.</a:documentation>
                     </attribute>
                     <optional>
                         <attribute name="mode">
-                            <a:documentation>Name of the mode that matches the mode in .</a:documentation>
+                            <a:documentation>Name of the mode that matches the mode in ProcessNode.</a:documentation>
                         </attribute>
                     </optional>
                     <oneOrMore>
+                        <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_CallTemplate"></ref>
+                        </optional>
                         <optional>
                             <ref name="e_ClearPage"></ref>
                         </optional>
@@ -1933,7 +1943,7 @@
                             <ref name="e_ForAll"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Group"></ref>
+                            <ref name="e_Slate"></ref>
                         </optional>
                         <optional>
                             <ref name="e_LoadXML"></ref>
@@ -2003,11 +2013,6 @@
                             <a:documentation>Alternative to giving the data structure in the child elements.</a:documentation>
                         </attribute>
                     </optional>
-                    <optional>
-                        <attribute name="attributes">
-                            <a:documentation>The variable (as an XPath expression, e.g. $foo) which contains Attribute Elements. These attributes are added to the root element.</a:documentation>
-                        </attribute>
-                    </optional>
                     <oneOrMore>
                         <optional>
                             <ref name="e_Element"></ref>
@@ -2037,10 +2042,13 @@
                     </attribute>
                     <oneOrMore>
                         <optional>
+                            <ref name="e_AttachFile"></ref>
+                        </optional>
+                        <optional>
                             <ref name="e_DefineColor"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_DefineMasterpage"></ref>
+                            <ref name="e_DefineMasterPage"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Function"></ref>
@@ -2055,7 +2063,7 @@
                             <ref name="e_PDFOptions"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Pageformat"></ref>
+                            <ref name="e_PageFormat"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Record"></ref>
@@ -2070,7 +2078,10 @@
                             <ref name="e_SetVariable"></ref>
                         </optional>
                         <optional>
-                            <ref name="e_Stylesheet"></ref>
+                            <ref name="e_StyleSheet"></ref>
+                        </optional>
+                        <optional>
+                            <ref name="e_Template"></ref>
                         </optional>
                         <optional>
                             <ref name="e_Trace"></ref>
@@ -2117,6 +2128,96 @@
             <empty></empty>
         </element>
     </define>
+    <define name="e_Template">
+        <element name="Template">
+            <a:documentation>Define a named template that can be invoked with CallTemplate. Unlike a Function, a template may contain layout actions (such as PlaceObject); they run at the call site, in document order, exactly once.</a:documentation>
+            <interleave>
+                <group>
+                    <attribute name="name">
+                        <a:documentation>The name of the template.</a:documentation>
+                    </attribute>
+                    <zeroOrMore>
+                        <ref name="e_Param"></ref>
+                    </zeroOrMore>
+                    <oneOrMore>
+                        <interleave>
+                            <optional>
+                                <ref name="e_AttachFile"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_CallTemplate"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_ClearPage"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_ForAll"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Slate"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_LoadXML"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Loop"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Message"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_NextFrame"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_NextRow"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_PlaceObject"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_ProcessNode"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_SaveXML"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_SetVariable"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Switch"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Until"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Value"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_While"></ref>
+                            </optional>
+                        </interleave>
+                    </oneOrMore>
+                </group>
+                <ref name="foreign-nodes"></ref>
+            </interleave>
+        </element>
+    </define>
+    <define name="e_CallTemplate">
+        <element name="CallTemplate">
+            <a:documentation>Invoke a named Template. Parameters are passed with Param children, whose select expressions are evaluated in the calling context. The parameter bindings are scoped to the template body.</a:documentation>
+            <interleave>
+                <group>
+                    <attribute name="name">
+                        <a:documentation>The name of the template to call.</a:documentation>
+                    </attribute>
+                    <zeroOrMore>
+                        <ref name="e_Param"></ref>
+                    </zeroOrMore>
+                </group>
+                <ref name="foreign-nodes"></ref>
+            </interleave>
+        </element>
+    </define>
       <sch:pattern>
         <sch:rule context="t:SetVariable">
           <sch:assert test="not(  not(empty(@select)) and node()  )">SetVariable: either use select Attribute _or_ child elements, but not both.</sch:assert>
@@ -2128,6 +2229,11 @@
             <a:documentation>Associates a value with a variable name. The value can be a simple value or a more complex one consisting of several elements.</a:documentation>
             <interleave>
                 <group>
+                    <optional>
+                        <attribute name="as">
+                            <a:documentation>A sequence type (in the style of XSLT/XQuery, e.g. element(Column)*, xs:string, node()*) that declares the variable holds a data value. When given, the element body is treated as a data value: layout actions such as PlaceObject are not allowed inside it.</a:documentation>
+                        </attribute>
+                    </optional>
                     <optional>
                         <attribute name="select">
                             <a:documentation>The value of the contents.</a:documentation>
@@ -2150,10 +2256,19 @@
                     <oneOrMore>
                         <interleave>
                             <optional>
+                                <ref name="e_Column"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_Columns"></ref>
+                            </optional>
+                            <optional>
                                 <ref name="e_CopyOf"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Element"></ref>
+                            </optional>
+                            <optional>
+                                <ref name="e_ForAll"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Paragraph"></ref>
@@ -2162,7 +2277,7 @@
                                 <ref name="e_Table"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_Textblock"></ref>
+                                <ref name="e_TextBlock"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Until"></ref>
@@ -2237,8 +2352,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Stylesheet">
-        <element name="Stylesheet">
+    <define name="e_StyleSheet">
+        <element name="StyleSheet">
             <a:documentation>Load a CSS file or define CSS rules</a:documentation>
             <interleave>
                 <group>
@@ -2299,10 +2414,10 @@
                                 <ref name="e_Loop"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_Tablehead"></ref>
+                                <ref name="e_TableHead"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_Tablerule"></ref>
+                                <ref name="e_TableRule"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Tr"></ref>
@@ -2317,8 +2432,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Tablehead">
-        <element name="Tablehead">
+    <define name="e_TableHead">
+        <element name="TableHead">
             <a:documentation>Create a repeating table head.</a:documentation>
             <interleave>
                 <group>
@@ -2331,7 +2446,7 @@
                                 <ref name="e_Switch"></ref>
                             </optional>
                             <optional>
-                                <ref name="e_Tablerule"></ref>
+                                <ref name="e_TableRule"></ref>
                             </optional>
                             <optional>
                                 <ref name="e_Tr"></ref>
@@ -2343,8 +2458,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Tablerule">
-        <element name="Tablerule">
+    <define name="e_TableRule">
+        <element name="TableRule">
             <a:documentation>Draw a horizontal rule spanning the full table width. Default thickness is 0.4pt.</a:documentation>
             <optional>
                 <attribute name="rulewidth">
@@ -2409,7 +2524,7 @@
                             <ref name="e_Bookmark"></ref>
                             <ref name="e_Box"></ref>
                             <ref name="e_ForAll"></ref>
-                            <ref name="e_Groupcontents"></ref>
+                            <ref name="e_SlateContents"></ref>
                             <ref name="e_HTML"></ref>
                             <ref name="e_Image"></ref>
                             <ref name="e_Loop"></ref>
@@ -2426,8 +2541,8 @@
             </interleave>
         </element>
     </define>
-    <define name="e_Textblock">
-        <element name="Textblock">
+    <define name="e_TextBlock">
+        <element name="TextBlock">
             <a:documentation>Create a rectangular piece of text.</a:documentation>
             <interleave>
                 <group>
@@ -2662,6 +2777,9 @@
                     <oneOrMore>
                         <interleave>
                             <optional>
+                                <ref name="e_CallTemplate"></ref>
+                            </optional>
+                            <optional>
                                 <ref name="e_Column"></ref>
                             </optional>
                             <optional>
@@ -2778,6 +2896,9 @@
                     <oneOrMore>
                         <interleave>
                             <optional>
+                                <ref name="e_CallTemplate"></ref>
+                            </optional>
+                            <optional>
                                 <ref name="e_Column"></ref>
                             </optional>
                             <optional>
@@ -2891,6 +3012,7 @@
 			    </element>
 			    <element name="kbd"><ref name="html" /></element>
 			    <element name="li"><ref name="htmlclassidstyle"/><ref name="html" /></element>
+			    <element name="math"><ref name="anything"/></element>
 			    <element name="ol"><ref name="htmlclassidstyle"/><ref name="html" /></element>
 			    <element name="p">
 					<ref name="htmlclassidstyle"/>
