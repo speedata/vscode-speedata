@@ -18,6 +18,8 @@ export interface CursorContext {
   attributePrefix?: string;   // partial attribute name being typed
   elementPrefix?: string;     // partial element name being typed
   existingAttributes?: Map<string, string>; // attributes already present on current tag (name → value)
+  attributeValuePrefix?: string; // text of the attribute value before the cursor (attributeValue only)
+  offset: number;             // cursor offset in the document
 }
 
 export function analyzeDocument(doc: TextDocument, position: Position): CursorContext {
@@ -30,6 +32,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
       type: 'unknown',
       elementStack: [],
       currentElement: '',
+      offset,
     };
   }
 
@@ -65,6 +68,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
         type: 'content',
         elementStack,
         currentElement,
+        offset,
       };
     }
 
@@ -77,12 +81,12 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
 
     // Check if this is a closing tag
     if (fullTagContent.startsWith('</')) {
-      return { type: 'unknown', elementStack, currentElement };
+      return { type: 'unknown', elementStack, currentElement, offset };
     }
 
     // Check if this is a PI
     if (fullTagContent.startsWith('<?')) {
-      return { type: 'unknown', elementStack, currentElement };
+      return { type: 'unknown', elementStack, currentElement, offset };
     }
 
     // Parse the full tag content to determine context
@@ -99,6 +103,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
         elementStack,
         currentElement,
         elementPrefix: partialAfter.trim(),
+        offset,
       };
     }
 
@@ -112,6 +117,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
         elementStack,
         currentElement: tagElementName,
         elementPrefix: tagElementName.substring(0, offset - lastOpenBracket - 1),
+        offset,
       };
     }
 
@@ -133,6 +139,8 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
         currentElement: tagElementName,
         attributeName: attrValueMatch[1],
         existingAttributes: existingAttrs,
+        attributeValuePrefix: attrValueMatch[2] ?? attrValueMatch[3] ?? '',
+        offset,
       };
     }
 
@@ -152,6 +160,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
           currentElement: tagElementName,
           attributeName: fullAttrName,
           existingAttributes: existingAttrs,
+          offset,
         };
       }
     }
@@ -164,6 +173,7 @@ export function analyzeDocument(doc: TextDocument, position: Position): CursorCo
       currentElement: tagElementName,
       attributePrefix: partialAttr ? partialAttr[1] : '',
       existingAttributes: existingAttrs,
+      offset,
     };
   }
 }

@@ -1,10 +1,11 @@
 import { Command, CompletionItem, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { CursorContext } from './xmlDocumentAnalyzer';
 import { ContentModel } from './contentModel';
 import { filterAttributes, getRequiredAttributes } from './customConstraints';
 import { getCrossReferenceCompletions, hasCrossReferenceTargets } from './crossReferenceProvider';
 
-export function getCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
+export function getCompletions(context: CursorContext, model: ContentModel, doc?: TextDocument): CompletionItem[] {
   switch (context.type) {
     case 'elementOpen':
     case 'content':
@@ -22,7 +23,7 @@ export function getCompletions(context: CursorContext, model: ContentModel, docu
     case 'attributeName':
       return getAttributeCompletions(context, model);
     case 'attributeValue':
-      return getAttributeValueCompletions(context, model, documentText);
+      return getAttributeValueCompletions(context, model, doc);
     default:
       return [];
   }
@@ -104,8 +105,8 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
   const existingNames = new Set(existingMap.keys());
 
   // Apply custom constraint filtering (e.g. DefineColor model-dependent attributes)
-  const filtered = filterAttributes(context.currentElement, existingMap, decl.attributes);
-  const customRequired = new Set(getRequiredAttributes(context.currentElement, existingMap));
+  const filtered = filterAttributes(model, context.currentElement, existingMap, decl.attributes);
+  const customRequired = new Set(getRequiredAttributes(model, context.currentElement, existingMap));
 
   const items = filtered
     .filter(attr => !existingNames.has(attr.name))
@@ -128,7 +129,7 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
       // Snippet with value placeholder
       item.insertText = `${attr.name}="\$1"`;
       item.insertTextFormat = InsertTextFormat.Snippet;
-      if ((attr.values && attr.values.length > 0) || hasCrossReferenceTargets(context.currentElement, attr.name)) {
+      if ((attr.values && attr.values.length > 0) || hasCrossReferenceTargets(model, context.currentElement, attr.name)) {
         // Trigger suggest after inserting so value completions with documentation appear
         item.command = { title: 'Suggest', command: 'editor.action.triggerSuggest' };
       }
@@ -136,21 +137,16 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
       return item;
     });
 
-  // Offer well-known xmlns: namespace prefix completions
-  const nsCompletions: { prefix: string; uri: string; detail: string }[] = [
-    { prefix: 'xmlns:map', uri: 'http://www.w3.org/2005/xpath-functions/map', detail: 'XPath map namespace' },
-    { prefix: 'xmlns:array', uri: 'http://www.w3.org/2005/xpath-functions/array', detail: 'XPath array namespace' },
-    { prefix: 'xmlns:sd', uri: 'urn:speedata:2009/publisher/functions/en', detail: 'Speedata Publisher functions' },
-  ];
-
-  for (const ns of nsCompletions) {
-    if (!existingNames.has(ns.prefix)) {
+  // Offer xmlns: namespace prefix completions from the schema's <lsp:namespace> hints.
+  for (const ns of model.namespaces) {
+    const prefix = `xmlns:${ns.prefix}`;
+    if (!existingNames.has(prefix)) {
       items.push({
-        label: ns.prefix,
+        label: prefix,
         kind: CompletionItemKind.Property,
-        sortText: '2' + ns.prefix,
-        detail: ns.detail,
-        insertText: `${ns.prefix}="${ns.uri}"`,
+        sortText: '2' + prefix,
+        detail: ns.uri,
+        insertText: `${prefix}="${ns.uri}"`,
         insertTextFormat: InsertTextFormat.PlainText,
       });
     }
@@ -159,7 +155,7 @@ function getAttributeCompletions(context: CursorContext, model: ContentModel): C
   return items;
 }
 
-function getAttributeValueCompletions(context: CursorContext, model: ContentModel, documentText?: string): CompletionItem[] {
+function getAttributeValueCompletions(context: CursorContext, model: ContentModel, doc?: TextDocument): CompletionItem[] {
   if (!context.attributeName) return [];
 
   const decl = model.elements.get(context.currentElement) ?? model.htmlElements.get(context.currentElement);
@@ -184,8 +180,15 @@ function getAttributeValueCompletions(context: CursorContext, model: ContentMode
     }
   }
 
-  if (documentText) {
-    const crossRefItems = getCrossReferenceCompletions(context.currentElement, context.attributeName, documentText);
+  if (doc) {
+    const crossRefItems = getCrossReferenceCompletions(
+      model,
+      context.currentElement,
+      context.attributeName,
+      doc,
+      context.attributeValuePrefix ?? '',
+      context.offset,
+    );
     for (const crItem of crossRefItems) {
       if (!schemaValues.has(crItem.label as string)) {
         items.push(crItem);

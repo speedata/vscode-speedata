@@ -1,6 +1,7 @@
 const esbuild = require('esbuild');
 
 const watch = process.argv.includes('--watch');
+const tests = process.argv.includes('--tests');
 
 /** @type {import('esbuild').BuildOptions} */
 const clientOptions = {
@@ -25,8 +26,23 @@ const serverOptions = {
   sourcemap: true,
 };
 
+// Tests: every test/*.test.ts becomes its own bundle in out/test/, run with
+// `node --test` (see the "test" script in package.json).
+/** @type {import('esbuild').BuildOptions} */
+const testOptions = {
+  entryPoints: ['./test/*.test.ts'],
+  bundle: true,
+  outdir: './out/test',
+  format: 'cjs',
+  platform: 'node',
+  target: 'node18',
+  sourcemap: true,
+};
+
 async function main() {
-  if (watch) {
+  if (tests) {
+    await esbuild.build(testOptions);
+  } else if (watch) {
     const clientCtx = await esbuild.context(clientOptions);
     const serverCtx = await esbuild.context(serverOptions);
     await clientCtx.watch();

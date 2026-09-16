@@ -30,13 +30,9 @@ function getElementHover(elementName: string, model: ContentModel, lang?: string
     lines.push('', '**Allowed child elements:** ' + decl.allowedChildren.map(c => `\`${c}\``).join(', '));
   }
 
-  if (lang) {
-    const nameLower = decl.name.toLowerCase();
-    if (lang.startsWith('de')) {
-      lines.push('', `[Dokumentation](https://doc.speedata.de/publisher/de/befehlsreferenz/${nameLower}/)`);
-    } else {
-      lines.push('', `[Documentation](https://doc.speedata.de/publisher/en/commandreference/${nameLower}/)`);
-    }
+  if (decl.docUrl) {
+    const label = lang?.startsWith('de') ? 'Dokumentation' : 'Documentation';
+    lines.push('', `[${label}](${decl.docUrl})`);
   }
 
   return {

@@ -15,7 +15,6 @@ import {
   LinkedEditingRanges,
   Position,
   DocumentSymbol,
-  SymbolKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ContentModel } from './contentModel';
@@ -26,6 +25,7 @@ import { getCompletions } from './completionProvider';
 import { getHover } from './hoverProvider';
 import { validateDocument } from './diagnosticsProvider';
 import { formatDocument } from './formattingProvider';
+import { getDocumentSymbols } from './documentSymbolProvider';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -222,7 +222,7 @@ connection.onCompletion((params: CompletionParams): CompletionItem[] => {
   const model = resolveSchemaForDocument(doc);
   if (!model) return [];
   const context = analyzeDocument(doc, params.position);
-  return getCompletions(context, model, doc.getText());
+  return getCompletions(context, model, doc);
 });
 
 connection.onHover((params: HoverParams): Hover | null => {
@@ -237,13 +237,13 @@ connection.onHover((params: HoverParams): Hover | null => {
 connection.onDocumentFormatting((params) => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  return formatDocument(doc, params.options);
+  return formatDocument(doc, params.options, resolveSchemaForDocument(doc));
 });
 
 connection.onDocumentSymbol((params): DocumentSymbol[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  return getDocumentSymbols(doc);
+  return getDocumentSymbols(doc, resolveSchemaForDocument(doc));
 });
 
 connection.onRequest('textDocument/linkedEditingRange', (params: LinkedEditingRangeParams): LinkedEditingRanges | null => {
@@ -251,118 +251,6 @@ connection.onRequest('textDocument/linkedEditingRange', (params: LinkedEditingRa
   if (!doc) return null;
   return getLinkedEditingRanges(doc, params.position);
 });
-
-function getDocumentSymbols(doc: TextDocument): DocumentSymbol[] {
-  const text = doc.getText();
-  const topLevel: DocumentSymbol[] = [];
-
-  // First pass: collect all Section symbols
-  const sectionRegex = /<Section\b([^>]*?)(\/?)>/g;
-  const sections: { symbol: DocumentSymbol; startOffset: number; endOffset: number }[] = [];
-  let sMatch: RegExpExecArray | null;
-
-  while ((sMatch = sectionRegex.exec(text)) !== null) {
-    const attrsStr = sMatch[1];
-    const selfClosing = sMatch[2] === '/';
-    const tagStart = sMatch.index;
-
-    const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
-    if (!nameMatch || !nameMatch[1]) continue;
-
-    const selectionStart = doc.positionAt(tagStart);
-    const selectionEnd = doc.positionAt(tagStart + sMatch[0].length);
-
-    let rangeEnd: Position;
-    let endOffset: number;
-    if (selfClosing) {
-      rangeEnd = selectionEnd;
-      endOffset = tagStart + sMatch[0].length;
-    } else {
-      const closeRange = findMatchingCloseTag(text, tagStart, 'Section', doc);
-      if (closeRange) {
-        const closeTagEndOffset = text.indexOf('>', doc.offsetAt(closeRange.end));
-        endOffset = closeTagEndOffset !== -1 ? closeTagEndOffset + 1 : doc.offsetAt(closeRange.end);
-        rangeEnd = doc.positionAt(endOffset);
-      } else {
-        rangeEnd = selectionEnd;
-        endOffset = tagStart + sMatch[0].length;
-      }
-    }
-
-    const sym = DocumentSymbol.create(
-      nameMatch[1],
-      undefined,
-      SymbolKind.Namespace,
-      { start: selectionStart, end: rangeEnd },
-      { start: selectionStart, end: selectionEnd },
-    );
-    sym.children = [];
-    sections.push({ symbol: sym, startOffset: tagStart, endOffset });
-    topLevel.push(sym);
-  }
-
-  // Second pass: collect Record and Function symbols, nest inside Sections if applicable
-  const symbolTagRegex = /<(Record|Function)\b([^>]*?)(\/?)>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = symbolTagRegex.exec(text)) !== null) {
-    const tagName = match[1];
-    const attrsStr = match[2];
-    const selfClosing = match[3] === '/';
-    const tagStart = match.index;
-
-    let symbolName: string | undefined;
-    if (tagName === 'Record') {
-      const elementMatch = attrsStr.match(/\belement\s*=\s*"([^"]*)"/);
-      if (!elementMatch || !elementMatch[1]) continue;
-      symbolName = elementMatch[1];
-      const modeMatch = attrsStr.match(/\bmode\s*=\s*"([^"]*)"/);
-      if (modeMatch) {
-        symbolName += ` (${modeMatch[1]})`;
-      }
-    } else {
-      const nameMatch = attrsStr.match(/\bname\s*=\s*"([^"]*)"/);
-      if (!nameMatch || !nameMatch[1]) continue;
-      symbolName = nameMatch[1];
-    }
-
-    const selectionStart = doc.positionAt(tagStart);
-    const selectionEnd = doc.positionAt(tagStart + match[0].length);
-
-    let rangeEnd: Position;
-    if (selfClosing) {
-      rangeEnd = selectionEnd;
-    } else {
-      const closeRange = findMatchingCloseTag(text, tagStart, tagName, doc);
-      if (closeRange) {
-        const closeTagEndOffset = text.indexOf('>', doc.offsetAt(closeRange.end));
-        rangeEnd = closeTagEndOffset !== -1
-          ? doc.positionAt(closeTagEndOffset + 1)
-          : closeRange.end;
-      } else {
-        rangeEnd = selectionEnd;
-      }
-    }
-
-    const sym = DocumentSymbol.create(
-      symbolName,
-      undefined,
-      tagName === 'Function' ? SymbolKind.Function : SymbolKind.Struct,
-      { start: selectionStart, end: rangeEnd },
-      { start: selectionStart, end: selectionEnd },
-    );
-
-    // Check if this symbol is inside a Section
-    const parentSection = sections.find(s => tagStart > s.startOffset && tagStart < s.endOffset);
-    if (parentSection) {
-      parentSection.symbol.children!.push(sym);
-    } else {
-      topLevel.push(sym);
-    }
-  }
-
-  return topLevel;
-}
 
 function getLinkedEditingRanges(doc: TextDocument, position: Position): LinkedEditingRanges | null {
   const text = doc.getText();

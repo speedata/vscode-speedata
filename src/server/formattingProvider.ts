@@ -1,12 +1,30 @@
 import { TextEdit, FormattingOptions, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { ContentModel } from './contentModel';
 
-const PRESERVED_ELEMENTS = new Set(['Value']);
-const SECTION_ELEMENTS = new Set(['Section']);
+/** Element sets that steer the formatter, derived from `<lsp:format>` hints. */
+interface FormatRules {
+  // Content is kept verbatim.
+  preserved: Set<string>;
+  // Children are separated by blank lines (root children always are).
+  blankLines: Set<string>;
+  // Inline flow content: text-only descendants stay on one line.
+  inline: Set<string>;
+}
 
-export function formatDocument(doc: TextDocument, options: FormattingOptions): TextEdit[] {
+function rulesFromModel(model?: ContentModel): FormatRules {
+  const rules: FormatRules = { preserved: new Set(), blankLines: new Set(), inline: new Set() };
+  for (const el of model?.elements.values() ?? []) {
+    if (el.format?.preserve) rules.preserved.add(el.name);
+    if (el.format?.blankLines) rules.blankLines.add(el.name);
+    if (el.format?.inline) rules.inline.add(el.name);
+  }
+  return rules;
+}
+
+export function formatDocument(doc: TextDocument, options: FormattingOptions, model?: ContentModel): TextEdit[] {
   const text = doc.getText();
-  const formatted = formatXml(text, options);
+  const formatted = formatXml(text, options, rulesFromModel(model));
   if (formatted === text) return [];
 
   const range: Range = {
@@ -16,16 +34,16 @@ export function formatDocument(doc: TextDocument, options: FormattingOptions): T
   return [TextEdit.replace(range, formatted)];
 }
 
-function formatXml(text: string, options: FormattingOptions): string {
+function formatXml(text: string, options: FormattingOptions, rules: FormatRules): string {
   const indent = options.insertSpaces ? ' '.repeat(options.tabSize) : '\t';
   const out: string[] = [];
   let depth = 0;
   let i = 0;
   let preserveDepth = 0;
   const elementStack: string[] = [];
-  // Number of currently-open <HTML> ancestors. Inside HTML (which also holds
-  // all MathML), text-only elements like <mi>lll</mi> are kept on a single
-  // line instead of being split across three lines.
+  // Number of currently-open inline-content ancestors (<HTML>, which also
+  // holds all MathML). Inside them, text-only elements like <mi>lll</mi> are
+  // kept on a single line instead of being split across three lines.
   let htmlDepth = 0;
 
   // Instead of emitting blank lines immediately, we track whether a blank
@@ -40,7 +58,7 @@ function formatXml(text: string, options: FormattingOptions): string {
   let commentBuffer: string[] = [];
 
   function flushBeforeElement(currentIsSelfClosing: boolean) {
-    if (!isBlankLineDepth(depth, elementStack)) {
+    if (!isBlankLineDepth(depth, elementStack, rules)) {
       // Not at a depth where we insert blank lines – just flush comments.
       for (const c of commentBuffer) out.push(c);
       commentBuffer = [];
@@ -108,7 +126,7 @@ function formatXml(text: string, options: FormattingOptions): string {
       const comment = text.substring(i, end + 3);
       if (preserveDepth > 0) {
         out.push(comment);
-      } else if (isBlankLineDepth(depth, elementStack)) {
+      } else if (isBlankLineDepth(depth, elementStack, rules)) {
         // Check if this comment is standalone (blank line after it in source)
         // or attached to the next element (no blank line).
         if (hasBlankLineAfter(text, end + 3)) {
@@ -166,7 +184,7 @@ function formatXml(text: string, options: FormattingOptions): string {
       const tagName = extractTagName(tag.substring(2));
 
       if (preserveDepth > 0) {
-        if (PRESERVED_ELEMENTS.has(tagName)) {
+        if (rules.preserved.has(tagName)) {
           preserveDepth--;
           if (preserveDepth === 0) {
             depth--;
@@ -185,7 +203,7 @@ function formatXml(text: string, options: FormattingOptions): string {
 
       depth = Math.max(0, depth - 1);
       elementStack.pop();
-      if (tagName === 'HTML' && htmlDepth > 0) htmlDepth--;
+      if (rules.inline.has(tagName) && htmlDepth > 0) htmlDepth--;
       // Flush any buffered comments before the closing tag
       for (const c of commentBuffer) out.push(c);
       commentBuffer = [];
@@ -211,7 +229,7 @@ function formatXml(text: string, options: FormattingOptions): string {
       if (preserveDepth > 0) {
         out.push(tag);
         if (!selfClosing) {
-          if (PRESERVED_ELEMENTS.has(tagName)) {
+          if (rules.preserved.has(tagName)) {
             preserveDepth++;
           }
         }
@@ -224,7 +242,7 @@ function formatXml(text: string, options: FormattingOptions): string {
         out.push(indentStr(indent, depth) + normalizeSelfClosingTag(tag) + '\n');
         pendingBlank = true;
         prevSiblingSelfClosing = true;
-      } else if (PRESERVED_ELEMENTS.has(tagName)) {
+      } else if (rules.preserved.has(tagName)) {
         flushBeforeElement(false);
         i = end + 1;
         const closeTag = '</' + tagName + '>';
@@ -278,7 +296,7 @@ function formatXml(text: string, options: FormattingOptions): string {
         out.push(indentStr(indent, depth) + normalizeTagSpaces(tag) + '\n');
         elementStack.push(tagName);
         depth++;
-        if (tagName === 'HTML') htmlDepth++;
+        if (rules.inline.has(tagName)) htmlDepth++;
         // Reset blank line state when entering a child scope
         pendingBlank = false;
         prevSiblingSelfClosing = false;
@@ -527,9 +545,9 @@ function hasBlankLineAfter(text: string, pos: number): boolean {
 }
 
 // Blank lines are inserted between sibling elements at top level (depth 1)
-// or inside a Section (depth 2).
-function isBlankLineDepth(depth: number, elementStack: string[]): boolean {
+// or inside an element annotated with <lsp:format blank-lines="true">.
+function isBlankLineDepth(depth: number, elementStack: string[], rules: FormatRules): boolean {
   if (depth === 1) return true;
-  if (depth === 2 && elementStack.length >= 1 && SECTION_ELEMENTS.has(elementStack[elementStack.length - 1])) return true;
+  if (elementStack.length >= 1 && rules.blankLines.has(elementStack[elementStack.length - 1])) return true;
   return false;
 }

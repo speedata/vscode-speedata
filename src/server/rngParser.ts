@@ -1,22 +1,40 @@
 import * as sax from 'sax';
-import { ContentModel, ElementDeclaration, AttributeDeclaration } from './contentModel';
+import {
+  ContentModel,
+  ElementDeclaration,
+  AttributeDeclaration,
+  FormatHints,
+  SymbolDefinition,
+  NamespaceHint,
+  SymbolHint,
+  ExclusiveRule,
+  WhenRule,
+} from './contentModel';
 
 // A node in the RNG content tree. A define's container is represented as a node
 // with an empty elementName; each <element> (named or wildcard) is its own node.
 interface RngNode {
   elementName: string;        // '' for define containers and wildcard elements
   isWildcard: boolean;        // <element> with <anyName>/<nsName> instead of name=""
+  wildcardAny: boolean;       // wildcard admits arbitrary names (not only an <except> list)
   documentation: string;
   attributes: AttributeDeclaration[];
   childRefs: string[];        // <ref name="…"> directly under this node
   childElements: RngNode[];   // <element> directly nested under this node
   allowsText: boolean;
+  format?: FormatHints;       // <lsp:format> annotation on this element
+  docUrl?: string;            // <lsp:doc>
+  symbol?: SymbolHint;        // <lsp:symbol>
+  exclusives?: ExclusiveRule[]; // <lsp:exclusive>
+  whens?: WhenRule[];         // <lsp:when>
 }
 
 interface ParseState {
   defines: Map<string, RngNode>;   // define name → container node
   startRef: string;
   namespace: string;
+  namespaces: NamespaceHint[];     // <lsp:namespace> at grammar level
+  builtins: Map<string, string[]>; // <lsp:builtin> at grammar level
   // Innermost open node is at the end (define container or element).
   nodeStack: RngNode[];
   inStart: boolean;
@@ -24,6 +42,8 @@ interface ParseState {
   currentValues: { value: string; documentation?: string }[];
   // Track if currently inside optional/zeroOrMore (attribute becomes not required)
   optionalDepth: number;
+  // Nesting inside <except> of a name class (<anyName><except>…</except></anyName>)
+  exceptDepth: number;
   // Text accumulation
   textBuffer: string;
   capturingText: 'documentation' | 'value' | 'pattern' | null;
@@ -33,6 +53,7 @@ function newNode(elementName: string, isWildcard: boolean): RngNode {
   return {
     elementName,
     isWildcard,
+    wildcardAny: false,
     documentation: '',
     attributes: [],
     childRefs: [],
@@ -46,11 +67,14 @@ export function parseRng(content: string): ContentModel {
     defines: new Map(),
     startRef: '',
     namespace: '',
+    namespaces: [],
+    builtins: new Map(),
     nodeStack: [],
     inStart: false,
     currentAttribute: null,
     currentValues: [],
     optionalDepth: 0,
+    exceptDepth: 0,
     textBuffer: '',
     capturingText: null,
   };
@@ -129,6 +153,29 @@ export function parseRng(content: string): ContentModel {
         // children are still required (at least once), don't change optionalDepth
         break;
 
+      case 'except': {
+        // <anyName><except>…</except></anyName> excludes namespaces from the
+        // wildcard (the "foreign elements" pattern); such a wildcard does not
+        // admit elements of the schema's own namespace.
+        const t = topNode();
+        if (state.exceptDepth === 0 && t && t.isWildcard && !state.currentAttribute) {
+          t.wildcardAny = false;
+        }
+        state.exceptDepth++;
+        break;
+      }
+
+      case 'anyName':
+      case 'nsName': {
+        // Name class of a wildcard element. Inside <except> it only narrows
+        // the wildcard; a name class on <attribute> is not an element.
+        const t = topNode();
+        if (t && t.isWildcard && state.exceptDepth === 0 && !state.currentAttribute) {
+          t.wildcardAny = true;
+        }
+        break;
+      }
+
       case 'text': {
         const t = topNode();
         if (t) t.allowsText = true;
@@ -149,6 +196,84 @@ export function parseRng(content: string): ContentModel {
         if (attrs['name'] === 'pattern') {
           state.capturingText = 'pattern';
           state.textBuffer = '';
+        }
+        break;
+
+      // LSP annotations (xmlns:lsp="urn:xml-lsp:annotations").
+      case 'defines':
+      case 'references':
+        if (state.currentAttribute && attrs['symbol']) {
+          state.currentAttribute[tag] = {
+            symbol: attrs['symbol'],
+            form: attrs['form'] || undefined,
+          };
+        }
+        break;
+
+      case 'format': {
+        const t = topNode();
+        if (t) {
+          const hints: FormatHints = {};
+          if (attrs['preserve'] === 'true') hints.preserve = true;
+          if (attrs['blank-lines'] === 'true') hints.blankLines = true;
+          if (attrs['inline'] === 'true') hints.inline = true;
+          t.format = { ...(t.format ?? {}), ...hints };
+        }
+        break;
+      }
+
+      case 'doc': {
+        const t = topNode();
+        if (t && attrs['href']) t.docUrl = attrs['href'];
+        break;
+      }
+
+      case 'symbol': {
+        const t = topNode();
+        if (t && attrs['kind'] && attrs['label']) {
+          t.symbol = {
+            kind: attrs['kind'],
+            label: attrs['label'],
+            detail: attrs['detail'] || undefined,
+          };
+        }
+        break;
+      }
+
+      case 'exclusive': {
+        const t = topNode();
+        if (t) {
+          (t.exclusives ??= []).push({
+            attributes: splitNames(attrs['attributes']),
+            content: attrs['content'] === 'true',
+          });
+        }
+        break;
+      }
+
+      case 'when': {
+        const t = topNode();
+        if (t && attrs['attribute']) {
+          (t.whens ??= []).push({
+            attribute: attrs['attribute'],
+            value: attrs['value'],
+            requires: splitNames(attrs['requires']),
+            forbids: splitNames(attrs['forbids']),
+          });
+        }
+        break;
+      }
+
+      // Grammar-level annotations (direct children of <grammar>).
+      case 'namespace':
+        if (!topNode() && attrs['prefix'] && attrs['uri']) {
+          state.namespaces.push({ prefix: attrs['prefix'], uri: attrs['uri'] });
+        }
+        break;
+
+      case 'builtin':
+        if (!topNode() && attrs['symbol']) {
+          state.builtins.set(attrs['symbol'], splitNames(attrs['names']));
         }
         break;
     }
@@ -201,6 +326,10 @@ export function parseRng(content: string): ContentModel {
       case 'optional':
       case 'zeroOrMore':
         state.optionalDepth--;
+        break;
+
+      case 'except':
+        state.exceptDepth--;
         break;
 
       case 'documentation': {
@@ -288,7 +417,31 @@ function buildContentModel(state: ParseState): ContentModel {
     elements,
     htmlElements,
     namespace: state.namespace,
+    symbolDefinitions: indexSymbolDefinitions(elements),
+    namespaces: state.namespaces,
+    builtins: state.builtins,
   };
+}
+
+/** Split a space-separated attribute value into names. */
+function splitNames(value: string | undefined): string[] {
+  return (value ?? '').split(/\s+/).filter(n => n.length > 0);
+}
+
+// symbol → every (element, attribute) whose values define a name of that symbol.
+function indexSymbolDefinitions(
+  elements: Map<string, ElementDeclaration>,
+): Map<string, SymbolDefinition[]> {
+  const index = new Map<string, SymbolDefinition[]>();
+  for (const el of elements.values()) {
+    for (const attr of el.attributes) {
+      if (!attr.defines) continue;
+      const list = index.get(attr.defines.symbol) ?? [];
+      list.push({ element: el.name, attribute: attr.name, form: attr.defines.form });
+      index.set(attr.defines.symbol, list);
+    }
+  }
+  return index;
 }
 
 // Collect, by name, every named <element> reachable from a define's content
@@ -329,6 +482,12 @@ function declarationFor(el: RngNode, defines: Map<string, RngNode>): ElementDecl
     attributes: resolveAttributes(el, defines, new Set()),
     allowedChildren: [...directChildElements(el, defines, new Set())],
     allowsText: resolveAllowsText(el, defines, new Set()),
+    allowsAnyChildren: resolveAllowsAnyChildren(el, defines, new Set()),
+    format: el.format,
+    docUrl: el.docUrl,
+    symbol: el.symbol,
+    exclusives: el.exclusives,
+    whens: el.whens,
   };
 }
 
@@ -377,6 +536,23 @@ function resolveAttributes(
     }
   }
   return [...byName.values()];
+}
+
+// Whether a wildcard element admitting arbitrary names may appear as a direct
+// child of `node` (own nested wildcards plus those from referenced defines).
+function resolveAllowsAnyChildren(
+  node: RngNode,
+  defines: Map<string, RngNode>,
+  visited: Set<string>,
+): boolean {
+  if (node.childElements.some(el => el.isWildcard && el.wildcardAny)) return true;
+  for (const ref of node.childRefs) {
+    if (visited.has(ref)) continue;
+    visited.add(ref);
+    const d = defines.get(ref);
+    if (d && resolveAllowsAnyChildren(d, defines, visited)) return true;
+  }
+  return false;
 }
 
 function resolveAllowsText(

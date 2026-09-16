@@ -1,7 +1,7 @@
 import { Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ContentModel, ElementDeclaration } from './contentModel';
-import { validateCustomConstraints } from './customConstraints';
+import { CustomDiagnostic, validateCustomConstraints } from './customConstraints';
 
 interface TagInfo {
   name: string;
@@ -9,6 +9,8 @@ interface TagInfo {
   character: number;
   attributes: Map<string, { value: string; line: number; character: number }>;
   selfClosing: boolean;
+  offset: number; // start of the tag in the text
+  end: number;    // just past the closing >
 }
 
 export function validateDocument(doc: TextDocument, model: ContentModel): Diagnostic[] {
@@ -23,15 +25,25 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
     name: string;
     decl: ElementDeclaration | undefined;
     tag: TagInfo;
-    hasChildren: boolean;
   }
   const stack: StackEntry[] = [];
-  // Elements whose content is free-form per the schema (Value: plain text;
-  // HTML: a recursive html pattern that also permits arbitrary XHTML-namespace
-  // elements and an "anything" math subtree). Their children are not validated.
-  const PRESERVED_ELEMENTS = new Set(['Value', 'HTML']);
+  const lookup = (name: string) => model.elements.get(name) ?? model.htmlElements.get(name);
+  // Inside an element whose schema content model contains a wildcard
+  // (allowsAnyChildren), children are not validated. Nesting of the same
+  // element is tracked so the matching closing tag is found.
+  const isPreserved = preservedElementCheck(model);
+  let preserveName = '';
   let preserveDepth = 0;
   let foreignDepth = 0;
+
+  const runCustomConstraints = (entry: StackEntry, closeTag: TagInfo) => {
+    const attrMap = new Map<string, string>();
+    for (const [k, v] of entry.tag.attributes) {
+      attrMap.set(k, v.value);
+    }
+    const hasContent = hasElementContent(text, entry.tag.end, closeTag.offset);
+    pushCustomDiagnostics(validateCustomConstraints(model, entry.name, attrMap, hasContent), entry.tag, diagnostics);
+  };
 
   for (const tag of tags) {
     if (tag.name.startsWith('/')) {
@@ -44,33 +56,19 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
       }
 
       if (preserveDepth > 0) {
-        if (PRESERVED_ELEMENTS.has(closeName)) {
+        if (closeName === preserveName) {
           preserveDepth--;
         }
         if (preserveDepth > 0) continue;
-        // preserveDepth just hit 0 — pop the Value entry from the stack
+        // preserveDepth just hit 0 — pop the preserved entry from the stack
         if (stack.length > 0 && stack[stack.length - 1].name === closeName) {
-          stack.pop();
+          runCustomConstraints(stack.pop()!, tag);
         }
         continue;
       }
 
       if (stack.length > 0 && stack[stack.length - 1].name === closeName) {
-        const entry = stack.pop()!;
-        // Run custom constraints on the closing element
-        const attrMap = new Map<string, string>();
-        for (const [k, v] of entry.tag.attributes) {
-          attrMap.set(k, v.value);
-        }
-        const customDiags = validateCustomConstraints(entry.name, attrMap, entry.hasChildren);
-        for (const cd of customDiags) {
-          diagnostics.push({
-            severity: cd.severity === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-            range: createRange(entry.tag.line, entry.tag.character, entry.name.length),
-            message: cd.message,
-            source: 'speedata',
-          });
-        }
+        runCustomConstraints(stack.pop()!, tag);
       }
       continue;
     }
@@ -83,7 +81,7 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
 
     // Skip validation inside preserved elements
     if (preserveDepth > 0) {
-      if (!tag.selfClosing && PRESERVED_ELEMENTS.has(tag.name)) {
+      if (!tag.selfClosing && tag.name === preserveName) {
         preserveDepth++;
       }
       continue;
@@ -91,19 +89,11 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
 
     // Foreign-namespaced element: skip it and its children
     if (tag.name.includes(':')) {
-      if (stack.length > 0) {
-        stack[stack.length - 1].hasChildren = true;
-      }
       if (!tag.selfClosing) foreignDepth = 1;
       continue;
     }
 
-    const decl = model.elements.get(tag.name);
-
-    // Mark parent as having children
-    if (stack.length > 0) {
-      stack[stack.length - 1].hasChildren = true;
-    }
+    const decl = lookup(tag.name);
 
     // Check if element is known
     if (!decl) {
@@ -198,18 +188,11 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
       for (const [k, v] of tag.attributes) {
         attrMap.set(k, v.value);
       }
-      const customDiags = validateCustomConstraints(tag.name, attrMap, false);
-      for (const cd of customDiags) {
-        diagnostics.push({
-          severity: cd.severity === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-          range: createRange(tag.line, tag.character, tag.name.length),
-          message: cd.message,
-          source: 'speedata',
-        });
-      }
+      pushCustomDiagnostics(validateCustomConstraints(model, tag.name, attrMap, false), tag, diagnostics);
     } else {
-      stack.push({ name: tag.name, decl, tag, hasChildren: false });
-      if (PRESERVED_ELEMENTS.has(tag.name)) {
+      stack.push({ name: tag.name, decl, tag });
+      if (isPreserved(tag.name, decl)) {
+        preserveName = tag.name;
         preserveDepth = 1;
       }
     }
@@ -229,6 +212,37 @@ export function validateDocument(doc: TextDocument, model: ContentModel): Diagno
   checkWellFormedness(text, doc, diagnostics);
 
   return diagnostics;
+}
+
+// Elements whose content is not validated when the schema declares no
+// wildcard at all. The Publisher schema's html pattern is incomplete (no
+// <body>, <div>, …) and has no wildcard, so skipping its content is the only
+// way to avoid false warnings. Remove once that schema carries a wildcard.
+const LEGACY_PRESERVED = new Set(['Value', 'HTML']);
+
+function preservedElementCheck(model: ContentModel): (name: string, decl: ElementDeclaration | undefined) => boolean {
+  const hasWildcards = [...model.elements.values()].some(e => e.allowsAnyChildren);
+  return hasWildcards
+    ? (_name, decl) => decl?.allowsAnyChildren === true
+    : (name) => LEGACY_PRESERVED.has(name);
+}
+
+function pushCustomDiagnostics(custom: CustomDiagnostic[], tag: TagInfo, diagnostics: Diagnostic[]): void {
+  for (const cd of custom) {
+    diagnostics.push({
+      severity: cd.severity === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+      range: createRange(tag.line, tag.character, tag.name.length),
+      message: cd.message,
+      source: 'speedata',
+    });
+  }
+}
+
+/** Whether the text between an opening and its closing tag holds anything but whitespace and comments. */
+function hasElementContent(text: string, from: number, to: number): boolean {
+  if (to <= from) return false;
+  const between = text.substring(from, to).replace(/<!--[\s\S]*?-->/g, '');
+  return /\S/.test(between);
 }
 
 function checkWellFormedness(text: string, doc: TextDocument, diagnostics: Diagnostic[]): void {
@@ -387,6 +401,8 @@ function parseTags(text: string, doc: TextDocument): TagInfo[] {
       character: pos.character,
       attributes,
       selfClosing,
+      offset: match.index,
+      end: match.index + match[0].length,
     });
   }
 
